@@ -1,0 +1,7 @@
+dataset:
+  name: mnist
+  root_dir: ./data/datasets
+  batch_size: 64
+  num_workers: 2
+
+epochs: 10
