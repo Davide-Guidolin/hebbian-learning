@@ -39,11 +39,13 @@ class Linear(nn.Linear):
                 delta_w = delta_w.sum(dim=0)
                 
             case 'hpca':
-                print(self.out.shape)
-                print(self.input.shape)
-                print(self.weight.shape)
-                # delta_w = self.out.t() @ (self.input - (self.)
-                exit(0)
+                delta_w = torch.empty(self.weight.shape, device=self.weight.device)
+                partials = torch.empty((self.weight.shape[0], self.out.shape[0], self.weight.shape[1]), device=self.weight.device)
+                for i in range(self.weight.shape[0]):
+                    partials[i] = self.out[:, i].unsqueeze(1) @ self.weight[i, :].unsqueeze(0)
+                    delta_w[i] = (self.out[:, i].unsqueeze(1).t() @ (self.input - partials[:i+1].sum(dim=0))).squeeze(0)
+                
+                return delta_w
             case _:
                 logging.error(f"{rule} not implemented for Linear layer")
                 exit(1)

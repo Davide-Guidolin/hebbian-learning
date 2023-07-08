@@ -29,7 +29,7 @@ def train(cfg: DictConfig):
             correct += (pred == label).sum().item()
             total += label.shape[0]
 
-            model.update_weights(lr=0.000001, rule='weight_decay')
+            model.update_weights(lr=0.000001, rule='hpca')
 
         print(f"Train Acc: {correct/total :.10f}")
 
