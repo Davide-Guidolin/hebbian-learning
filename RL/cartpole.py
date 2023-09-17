@@ -1,28 +1,24 @@
+# https://nandakishorej8.medium.com/part-2-policy-based-reinforcement-learning-openais-cartpole-with-reinforce-algorithm-18de8cb5efa4
+
 import torch
 import torch.nn as nn
 from torchvision.transforms import Compose, Resize, ToTensor
 from typing import Tuple
 import gymnasium as gym
 import random
+import numpy as np
 import matplotlib.pyplot as plt
 
 def get_out_shape(dim, k_size, stride = 1, padding = 0, pooling_size = 1):
     return int(((dim - k_size + 2*padding)/stride + 1)/pooling_size)
 
-def init_weights(m):
-    if isinstance(m, nn.Linear):
-        torch.nn.init.xavier_uniform_(m.weight)
-        m.bias.data.fill_(0.1)
-
 class ClassicNet(nn.Sequential):
     def __init__(self, n_obs, n_actions):
         super().__init__(
-            nn.Linear(n_obs, 16),
-            nn.ReLU(),
-            nn.Linear(16, 8),
-            nn.ReLU(),
-            nn.Linear(8, n_actions),
-            nn.Softmax()
+            torch.nn.Linear(n_obs, 128),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(128, n_actions),
+            torch.nn.Softmax()
         )
     
     
@@ -75,13 +71,13 @@ class ConvNet(nn.Module):
         return out
 
 
-def discount_rewards(rewards, gamma=0.95):
+def discount_rewards(rewards, gamma=0.99):
     disc_return = torch.pow(gamma, torch.arange(len(rewards)).float()) * rewards
-    # disc_return = disc_return - disc_return.mean() - disc_return.min()                     
+    disc_return = disc_return / (disc_return.max() - disc_return.min())                     
     return disc_return
 
 def loss_fn(preds, r):
-    loss = -1 * torch.sum(r * preds)
+    loss = -1 * torch.sum(r * torch.log(preds))
     
     if loss.isnan():
         print(r, preds)
@@ -95,40 +91,38 @@ def train_step(model, env, optimizer, loss_fn, transform, state_type='image', de
     
     state, _  = env.reset()
     done = False
+    truncated = False
     
-    states = []
-    actions = []
-    cum_rewards = [] 
+    transitions = []
     
     total_rew = 0
-    while not done:
+    while not (done or truncated):
         if state_type == 'image':
             s = env.render()
             s = transform(s).cuda()
-            states.append(s.tolist())
+            state = s.tolist()
         else:
-            states.append(state)
             s = torch.tensor(state, device='cuda')
         
-        if random.random() > 0.8:
-            a = env.action_space.sample()
-        else:
-            with torch.no_grad():
-                a = torch.argmax(model(s.unsqueeze(0)), dim=-1).item()
+        with torch.no_grad():
+            act_prob = model(s.unsqueeze(0)).squeeze()
+            a = np.random.choice(np.array([0,1]), p=act_prob.cpu().numpy())
         
-        state, rew, done, _, _ = env.step(a)
-        total_rew += rew
+        total_rew += 1
+        transitions.append((state, a, total_rew))
         
-        actions.append(a)
-        cum_rewards.append(total_rew)
+        state, rew, done, truncated, _ = env.step(a)
     
-    states = torch.tensor(states, device=device)
-    pred_batch = model(states).cpu()
-    actions_batch = torch.tensor(actions)
-    probs_batch = pred_batch.gather(dim=1, index=actions_batch.long().view(-1,1)).squeeze()
+    reward_batch = torch.Tensor([r for (s,a,r) in transitions]).flip(dims=(0,))
+
+    disc_rewards = discount_rewards(torch.tensor(reward_batch))
     
-    disc_rewards = discount_rewards(torch.tensor(cum_rewards))
-    loss = loss_fn(probs_batch, disc_rewards)
+    state_batch = torch.Tensor([s for (s,a,r) in transitions]).cuda()
+    action_batch = torch.Tensor([a for (s,a,r) in transitions])
+    pred_batch = model(state_batch).cpu()  
+    prob_batch = pred_batch.gather(dim=1, index=action_batch.long().view(-1,1)).squeeze()
+    
+    loss = loss_fn(prob_batch, disc_rewards)
     
     optimizer.zero_grad()
     loss.backward()
@@ -148,9 +142,10 @@ def eval_step(model, env, transform, state_type='image', device='cuda'):
     
     state, _  = env.reset()
     done = False
+    truncated = False
     
     total_rew = 0
-    while not done:
+    while not (done or truncated):
         if state_type == 'image':
             s = env.render()
             s = transform(s).cuda()
@@ -160,14 +155,14 @@ def eval_step(model, env, transform, state_type='image', device='cuda'):
         with torch.no_grad():
             a = torch.argmax(model(s.unsqueeze(0)), dim=-1).item()
         
-        state, rew, done, _, _ = env.step(a)
+        state, rew, done, truncated, _ = env.step(a)
         total_rew += rew
     
     return total_rew
     
 def main():
     N_EPOCHS = 2000
-    EVAL_INTERVAL = 10
+    EVAL_INTERVAL = 50
     img_size = (128, 128)
     state_type = 'numbers' # image
     
@@ -182,9 +177,8 @@ def main():
     else:
         model = ClassicNet(n_obs=4, n_actions=2)    
     
-    model.apply(init_weights)
     model.cuda()
-    optim = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-1)
+    optim = torch.optim.Adam(model.parameters(), lr=0.0007, weight_decay=1e-1)
     
     losses = []
     rewards = []
@@ -193,10 +187,9 @@ def main():
         loss, total_rew = train_step(model, env, optim, loss_fn, transform, state_type=state_type)
         losses.append(loss.detach().numpy())
         
-        print(f"[{e+1}/{N_EPOCHS}")
-        print(f"loss: {loss} Rew: {total_rew}")
-        
         if (e+1) % EVAL_INTERVAL == 0:
+            print(f"[{e+1}/{N_EPOCHS}")
+            print(f"Train loss: {loss} Train Rew: {total_rew}")
             total_rew = eval_step(model, env, transform, state_type=state_type)
             rewards.append(total_rew)
             print(f"Eval reward = {total_rew}")
@@ -207,5 +200,6 @@ def main():
     plt.plot(range(1, N_EPOCHS, EVAL_INTERVAL), rewards)
     plt.savefig("./eval_reward.jpg")
     
+
 if __name__ == "__main__":
     main()
