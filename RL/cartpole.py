@@ -21,56 +21,6 @@ class ClassicNet(nn.Sequential):
             torch.nn.Softmax()
         )
     
-    
-class ConvNet(nn.Module):
-    def __init__(self, in_shape, n_actions):
-        super().__init__()
-        
-        c, w, h = in_shape
-        
-        out_shape = [w, h]
-        self.bn1 = nn.BatchNorm2d(3)
-        self.conv1 = nn.Conv2d(in_channels=c, out_channels=16, kernel_size=5)
-        out_shape = list(map(lambda x: get_out_shape(x, 5, pooling_size=2), out_shape))
-        
-        self.bn2 = nn.BatchNorm2d(16)
-        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3)
-        out_shape = list(map(lambda x: get_out_shape(x, 3, pooling_size=2), out_shape))
-        
-        self.bn3 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3)
-        out_shape = list(map(lambda x: get_out_shape(x, 3, pooling_size=2), out_shape))
-        
-        self.pool = nn.MaxPool2d(kernel_size=2)
-        
-        self.flatten = nn.Flatten()
-        out_size = out_shape[0] * out_shape[1] * 64
-        
-        self.head = nn.Linear(out_size, n_actions)
-        self.softmax = nn.Softmax(dim=-1)
-        self.dropout = nn.Dropout(p=0.5)
-        
-    def forward(self, x):
-        x = self.bn1(x)
-        x = self.conv1(x)
-        x = self.pool(x)
-        
-        x = self.bn2(x)
-        x = self.conv2(x)
-        x = self.pool(x)
-        
-        x = self.bn3(x)
-        x = self.conv3(x)
-        x = self.pool(x)
-        
-        x = self.flatten(x)
-        x = self.dropout(self.head(x))
-        
-        out = self.softmax(x)
-        
-        return out
-
-
 def discount_rewards(rewards, gamma=0.99):
     disc_return = torch.pow(gamma, torch.arange(len(rewards)).float()) * rewards
     disc_return = disc_return / (disc_return.max() - disc_return.min())                     
@@ -85,7 +35,7 @@ def loss_fn(preds, r):
         
     return loss
 
-def train_step(model, env, optimizer, loss_fn, transform, state_type='image', device='cuda'):
+def train_step(model, env, optimizer, loss_fn, device='cuda'):
     
     model.train()
     
@@ -97,12 +47,7 @@ def train_step(model, env, optimizer, loss_fn, transform, state_type='image', de
     
     total_rew = 0
     while not (done or truncated):
-        if state_type == 'image':
-            s = env.render()
-            s = transform(s).cuda()
-            state = s.tolist()
-        else:
-            s = torch.tensor(state, device='cuda')
+        s = torch.tensor(state, device=device)
         
         with torch.no_grad():
             act_prob = model(s.unsqueeze(0)).squeeze()
@@ -117,7 +62,7 @@ def train_step(model, env, optimizer, loss_fn, transform, state_type='image', de
 
     disc_rewards = discount_rewards(torch.tensor(reward_batch))
     
-    state_batch = torch.Tensor([s for (s,a,r) in transitions]).cuda()
+    state_batch = torch.Tensor([s for (s,a,r) in transitions]).to(device)
     action_batch = torch.Tensor([a for (s,a,r) in transitions])
     pred_batch = model(state_batch).cpu()  
     prob_batch = pred_batch.gather(dim=1, index=action_batch.long().view(-1,1)).squeeze()
@@ -137,7 +82,7 @@ def train_step(model, env, optimizer, loss_fn, transform, state_type='image', de
     return loss, total_rew
 
 
-def eval_step(model, env, transform, state_type='image', device='cuda'):
+def eval_step(model, env, device='cuda'):
     model.eval()
     
     state, _  = env.reset()
@@ -146,11 +91,7 @@ def eval_step(model, env, transform, state_type='image', device='cuda'):
     
     total_rew = 0
     while not (done or truncated):
-        if state_type == 'image':
-            s = env.render()
-            s = transform(s).cuda()
-        else:
-            s = torch.tensor(state, device='cuda')
+        s = torch.tensor(state, device=device)
         
         with torch.no_grad():
             a = torch.argmax(model(s.unsqueeze(0)), dim=-1).item()
@@ -163,19 +104,11 @@ def eval_step(model, env, transform, state_type='image', device='cuda'):
 def main():
     N_EPOCHS = 2000
     EVAL_INTERVAL = 50
-    img_size = (128, 128)
-    state_type = 'numbers' # image
     
-    env = gym.make('CartPole-v1', render_mode='rgb_array')
-    n_actions = env.action_space.n
+    env = gym.make('CartPole-v1')
     env.reset()
     
-    transform = Compose([ToTensor(), Resize(img_size)])
-    
-    if state_type == 'image':
-        model = ConvNet((3, img_size[0], img_size[1]), n_actions)
-    else:
-        model = ClassicNet(n_obs=4, n_actions=2)    
+    model = ClassicNet(n_obs=4, n_actions=2)    
     
     model.cuda()
     optim = torch.optim.Adam(model.parameters(), lr=0.0007, weight_decay=1e-1)
@@ -184,13 +117,13 @@ def main():
     rewards = []
     
     for e in range(N_EPOCHS):
-        loss, total_rew = train_step(model, env, optim, loss_fn, transform, state_type=state_type)
+        loss, total_rew = train_step(model, env, optim, loss_fn)
         losses.append(loss.detach().numpy())
         
         if (e+1) % EVAL_INTERVAL == 0:
             print(f"[{e+1}/{N_EPOCHS}")
             print(f"Train loss: {loss} Train Rew: {total_rew}")
-            total_rew = eval_step(model, env, transform, state_type=state_type)
+            total_rew = eval_step(model, env)
             rewards.append(total_rew)
             print(f"Eval reward = {total_rew}")
     
