@@ -1,3 +1,5 @@
+# https://github.com/lmarza/CartPole-CNN
+
 import gymnasium as gym
 import math
 import random
@@ -11,6 +13,11 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torchvision.transforms import Compose, Resize, ToTensor, Grayscale
+from torch.utils.tensorboard import SummaryWriter
+
+
+writer = SummaryWriter('runs/DQN_1')
+tb_step = 0
 
 env = gym.make('CartPole-v1', render_mode='rgb_array')
 
@@ -59,9 +66,9 @@ class DQN(nn.Module):
         self.bn2 = nn.BatchNorm2d(64)
         out_shape = list(map(lambda x: get_out_shape(x, 7, pooling_size=1, stride=3), out_shape))
 
-        # self.conv3 = nn.Conv2d(in_channels=16, out_channels=16, kernel_size=3, stride=1)
-        # self.bn3 = nn.BatchNorm2d(16)
-        # out_shape = list(map(lambda x: get_out_shape(x, 3, pooling_size=1, stride=1), out_shape))
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1)
+        self.bn3 = nn.BatchNorm2d(64)
+        out_shape = list(map(lambda x: get_out_shape(x, 3, pooling_size=1, stride=1), out_shape))
 
         
         self.flatten = nn.Flatten()
@@ -83,9 +90,9 @@ class DQN(nn.Module):
         x = self.bn2(x)
         x = self.relu(x)
         
-        # x = self.conv3(x)
-        # x = self.bn3(x)
-        # x = self.relu(x)
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = self.relu(x)
     
         x = self.flatten(x)
         x = self.head(x)
@@ -100,7 +107,7 @@ EPS_START = 0.95
 EPS_END = 0.01
 EPS_DECAY = 1000
 TAU = 0.05
-LR = 0.00001
+LR = 0.00000001
 N_STATES = 2
 img_size = 160
 
@@ -191,6 +198,8 @@ def plot_loss(show_results=False):
 
 
 def optimize_model():
+    global tb_step
+    
     if len(memory) < BATCH_SIZE:
         return 0
     
@@ -214,10 +223,19 @@ def optimize_model():
     criterion = nn.SmoothL1Loss()
     loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
     
+    writer.add_scalar('loss', loss, tb_step)
+    
     optimizer.zero_grad()
     loss.backward()
-    
     torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 1)
+    
+    writer.add_scalar('actor/cnn1_grad', policy_net.conv1.weight.grad.mean().item(), tb_step)
+    writer.add_scalar('actor/cnn2_grad', policy_net.conv2.weight.grad.mean().item(), tb_step)
+    writer.add_scalar('actor/cnn3_grad', policy_net.conv3.weight.grad.mean().item(), tb_step)
+    writer.add_scalar('actor/head_grad', policy_net.head[0].weight.grad.mean().item(), tb_step)
+    
+    tb_step += 1
+    
     optimizer.step()
     torch.cuda.empty_cache()
     
@@ -242,8 +260,11 @@ for i_episode in range(num_episodes):
             action = select_action(states_2_t)
             
         _, reward, terminated, truncated, _ = env.step(action.item())
-        reward = torch.tensor([reward], device=device)
         done = terminated or truncated
+        if done and t != 500:
+            reward = -1
+            
+        reward = torch.tensor([reward], device=device)
         
         if terminated:
             next_state = None
@@ -269,8 +290,9 @@ for i_episode in range(num_episodes):
         
         if done:
             episode_durations.append(t+1)
-            plot_durations()
-            plot_loss()
+            print(f"[{i_episode}/{num_episodes}] {t+1}")
+            # plot_durations()
+            # plot_loss()
             target_net.cpu()
             policy_net.cpu()
             target_net_state_dict = target_net.state_dict()
@@ -285,7 +307,8 @@ for i_episode in range(num_episodes):
             policy_net.cuda()
             
             break
-        
+    
+    writer.add_scalar('reward/train_reward', episode_durations[-1], i_episode)  
         
     torch.cuda.empty_cache()
 
