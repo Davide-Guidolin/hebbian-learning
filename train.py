@@ -4,7 +4,7 @@ import logging
 import torch
 
 from data import get_loaders
-from models.simple_model import SimpleModel
+from models import SimpleModel, ConvModel
 
 @hydra.main(version_base=None, config_path="configs", config_name="base_config.yaml")
 def train(cfg: DictConfig):
@@ -13,7 +13,9 @@ def train(cfg: DictConfig):
     logging.info(f"Length train loader: {len(train_loader)} batches")
     logging.info(f"Length test loader: {len(test_loader)} batches")
     
-    model = SimpleModel(28*28, 10).cuda()
+    # model = SimpleModel(28*28, 10).cuda()
+    model = ConvModel(in_channels=1, out_channels=3).cuda()
+
     for e in range(cfg.epochs):
         print(f"Epoch {e}")
         correct = 0
@@ -25,11 +27,11 @@ def train(cfg: DictConfig):
 
             out = model(img)
 
-            pred = torch.argmax(out, dim=1)
-            correct += (pred == label).sum().item()
-            total += label.shape[0]
+            # pred = torch.argmax(out, dim=1)
+            # correct += (pred == label).sum().item()
+            # total += label.shape[0]
 
-            model.update_weights(lr=0.000001, rule='hpca')
+            model.update_weights(lr=0.000001, rule='simple')
 
         print(f"Train Acc: {correct/total :.10f}")
 

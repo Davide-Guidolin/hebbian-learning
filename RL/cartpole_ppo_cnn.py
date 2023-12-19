@@ -22,7 +22,7 @@ test_env = gym.make('CartPole-v1', render_mode='rgb_array')
 
 DEVICE = 'cuda'
 BATCH_SIZE = 128
-LEARNING_RATE = 0.0003
+LEARNING_RATE = 0.0001
 MAX_EPISODES = 20000
 DISCOUNT_FACTOR = 0.95
 N_TRIALS = 50
@@ -37,7 +37,7 @@ OUTPUT_DIM = train_env.action_space.n
 img_size = 160
 accum_step = 0
 tb_step = 0
-writer = SummaryWriter(f'runs/ppo_cnn_gelu_{BATCH_SIZE}bs_ppo{PPO_STEPS}_{PPO_CLIP}_{VAL_W}val_{ENTROPY_W}entropy_{LEARNING_RATE}lr_no_norm_rew_{DISCOUNT_FACTOR}disc_1linear')
+writer = SummaryWriter(f'runs/ppo_5cnn_gelu_{BATCH_SIZE}bs_ppo{PPO_STEPS}_{PPO_CLIP}_{VAL_W}val_{ENTROPY_W}entropy_{LEARNING_RATE}lr_no_norm_rew_{DISCOUNT_FACTOR}disc_1linear_5negative_final_rew_batch_norm')
 
 def get_out_shape(dim, k_size, stride = 1, padding = 0, pooling_size = 1):
     return int(((dim - k_size + 2*padding)/stride + 1)/pooling_size)
@@ -52,25 +52,33 @@ class CNN(nn.Module):
         
         out_shape = [w, h]
         self.conv1 = nn.Conv2d(in_channels=c, out_channels=32, kernel_size=8, stride=4)
-        # self.bn1 = nn.BatchNorm2d(32)
+        self.bn1 = nn.BatchNorm2d(32)
         out_shape = list(map(lambda x: get_out_shape(x, 8, pooling_size=1, stride=4), out_shape))
         
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2)
-        # self.bn2 = nn.BatchNorm2d(64)
+        self.bn2 = nn.BatchNorm2d(64)
         out_shape = list(map(lambda x: get_out_shape(x, 4, pooling_size=1, stride=2), out_shape))
 
         self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1)
-        # self.bn3 = nn.BatchNorm2d(64)
+        self.bn3 = nn.BatchNorm2d(64)
         out_shape = list(map(lambda x: get_out_shape(x, 3, pooling_size=1, stride=1), out_shape))
+        
+        # self.conv4 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1)
+        # self.bn4 = nn.BatchNorm2d(128)
+        # out_shape = list(map(lambda x: get_out_shape(x, 3, pooling_size=1, stride=1), out_shape))
+        
+        # self.conv5 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1)
+        # self.bn5 = nn.BatchNorm2d(128)
+        # out_shape = list(map(lambda x: get_out_shape(x, 3, pooling_size=1, stride=1), out_shape))
 
         
         self.flatten = nn.Flatten()
         out_size = out_shape[0] * out_shape[1] * 64
         
         self.head = nn.Sequential(
-            nn.Linear(out_size, out_dim)
+            nn.Linear(out_size, out_dim),
             # nn.Dropout(),
-            # nn.LeakyReLU(),
+            # nn.GELU(),
             # nn.Linear(hidden_dim, out_dim)
         )
         
@@ -80,17 +88,25 @@ class CNN(nn.Module):
         
     def forward(self, x):
         x = self.conv1(x)
-        # x = self.bn1(x)
+        x = self.bn1(x)
         x = self.gelu(x)
         
         x = self.conv2(x)
-        # x = self.bn2(x)
+        x = self.bn2(x)
         x = self.gelu(x)
         
         x = self.conv3(x)
-        # x = self.bn3(x)
+        x = self.bn3(x)
         x = self.gelu(x)
-    
+        
+        # x = self.conv4(x)
+        # x = self.bn4(x)
+        # x = self.gelu(x)
+        
+        # x = self.conv5(x)
+        # x = self.bn5(x)
+        # x = self.gelu(x)
+        
         x = self.flatten(x)
         x = self.head(x)
         
@@ -287,7 +303,7 @@ def update_policy(policy, states, actions, log_prob_actions, advantages, returns
         tb_step += 1
         
         if accum_step % BATCH_SIZE == 0:
-            # nn.utils.clip_grad_norm_(policy.parameters(), 1)
+            nn.utils.clip_grad_norm_(policy.parameters(), 1)
             optimizer.step()
             optimizer.zero_grad()
 

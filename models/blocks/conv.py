@@ -29,7 +29,6 @@ class Conv2d(nn.Conv2d):
             group,
             bias,
             padding_mode,
-            activation,
             device,
             dtype)
         
@@ -47,6 +46,16 @@ class Conv2d(nn.Conv2d):
     
     def compute_update(self, rule='simple'):
         # TODO
+        # w: [3, 1, 3, 3] [out_ch, in_ch, k_size_0, k_size_1]
+        # in : [64, 1, 28, 28]
+        # out:  [64, 3, 26, 26]
+        match rule:
+            case 'simple':
+                print(self.out.shape)
+                print(self.input.shape)
+                print(self.weight.shape)
+                exit(0)
+                pass
         return torch.zeros(self.weight.shape)
 
     def update_weights(self, lr=0.001, rule='simple'):

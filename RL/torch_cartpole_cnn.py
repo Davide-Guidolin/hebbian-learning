@@ -58,16 +58,16 @@ class DQN(nn.Module):
         c, w, h = in_shape
         
         out_shape = [w, h]
-        self.conv1 = nn.Conv2d(in_channels=c, out_channels=64, kernel_size=7, stride=3)
-        self.bn1 = nn.BatchNorm2d(64)
-        out_shape = list(map(lambda x: get_out_shape(x, 7, pooling_size=1, stride=3), out_shape))
+        self.conv1 = nn.Conv2d(in_channels=c, out_channels=32, kernel_size=8, stride=4)
+        # self.bn1 = nn.BatchNorm2d(64)
+        out_shape = list(map(lambda x: get_out_shape(x, 8, pooling_size=1, stride=4), out_shape))
         
-        self.conv2 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=7, stride=3)
-        self.bn2 = nn.BatchNorm2d(64)
-        out_shape = list(map(lambda x: get_out_shape(x, 7, pooling_size=1, stride=3), out_shape))
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2)
+        # self.bn2 = nn.BatchNorm2d(64)
+        out_shape = list(map(lambda x: get_out_shape(x, 4, pooling_size=1, stride=2), out_shape))
 
         self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1)
-        self.bn3 = nn.BatchNorm2d(64)
+        # self.bn3 = nn.BatchNorm2d(64)
         out_shape = list(map(lambda x: get_out_shape(x, 3, pooling_size=1, stride=1), out_shape))
 
         
@@ -75,24 +75,25 @@ class DQN(nn.Module):
         out_size = out_shape[0] * out_shape[1] * 64
         
         self.head = nn.Sequential(
-            nn.Linear(out_size, 128),
-            nn.Linear(128, n_actions)
+            nn.Linear(out_size, n_actions)
+            # nn.Linear(128, n_actions)
         )
         
         self.relu = nn.ReLU()
+        self.gelu = nn.GELU()
         
     def forward(self, x):
         x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
+        # x = self.bn1(x)
+        x = self.gelu(x)
         
         x = self.conv2(x)
-        x = self.bn2(x)
-        x = self.relu(x)
+        # x = self.bn2(x)
+        x = self.gelu(x)
         
         x = self.conv3(x)
-        x = self.bn3(x)
-        x = self.relu(x)
+        # x = self.bn3(x)
+        x = self.gelu(x)
     
         x = self.flatten(x)
         x = self.head(x)
@@ -107,7 +108,7 @@ EPS_START = 0.95
 EPS_END = 0.01
 EPS_DECAY = 1000
 TAU = 0.05
-LR = 0.00000001
+LR = 0.00001
 N_STATES = 2
 img_size = 160
 
@@ -141,9 +142,9 @@ def select_action(state):
     
     if sample > eps_threshold:
         with torch.no_grad():
-            return policy_net(state).max(1)[1].view(1, 1)
+            return policy_net(state.to(device)).max(1)[1].view(1, 1).cpu()
     else:
-        return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
+        return torch.tensor([[env.action_space.sample()]], device='cpu', dtype=torch.long)
 
 episode_durations = []
 losses = []
@@ -213,11 +214,11 @@ def optimize_model():
     action_batch = torch.cat(batch.action)
     reward_batch = torch.cat(batch.reward)
     
-    state_action_values = policy_net(state_batch).gather(1, action_batch)
+    state_action_values = policy_net(state_batch.to(device)).cpu().gather(1, action_batch)
     
-    next_state_values = torch.zeros(BATCH_SIZE, device=device)
+    next_state_values = torch.zeros(BATCH_SIZE, device='cpu')
     with torch.no_grad():
-        next_state_values[non_final_mask] = target_net(non_final_next_states).max(1)[0]
+        next_state_values[non_final_mask] = target_net(non_final_next_states.to(device)).cpu().max(1)[0]
     
     expected_state_action_values = (next_state_values * GAMMA) + reward_batch
     criterion = nn.SmoothL1Loss()
@@ -227,7 +228,7 @@ def optimize_model():
     
     optimizer.zero_grad()
     loss.backward()
-    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 1)
+    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 0.5)
     
     writer.add_scalar('actor/cnn1_grad', policy_net.conv1.weight.grad.mean().item(), tb_step)
     writer.add_scalar('actor/cnn2_grad', policy_net.conv2.weight.grad.mean().item(), tb_step)
@@ -241,7 +242,7 @@ def optimize_model():
     
     return loss.cpu()
 
-num_episodes = 600
+num_episodes = 5000
 
 states_2 = deque([], maxlen=N_STATES)
 next_states_2 = deque([], maxlen=N_STATES)
@@ -250,12 +251,12 @@ next_states_2_t = torch.empty((1, N_STATES, img_size[0], img_size[1]))
 
 for i_episode in range(num_episodes):
     state, info = env.reset()
-    state = transform(env.render()).to(device).unsqueeze(0)
+    state = transform(env.render()).unsqueeze(0)
     states_2.append(state)
         
     for t in count():
         if t <= N_STATES-1:
-            action = torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
+            action = torch.tensor([[env.action_space.sample()]], device='cpu', dtype=torch.long)
         else:
             action = select_action(states_2_t)
             
@@ -264,12 +265,12 @@ for i_episode in range(num_episodes):
         if done and t != 500:
             reward = -1
             
-        reward = torch.tensor([reward], device=device)
+        reward = torch.tensor([reward], device='cpu')
         
         if terminated:
             next_state = None
         else:
-            next_state = transform(env.render()).to(device).unsqueeze(0)
+            next_state = transform(env.render()).unsqueeze(0)
         
         if t==0:
             next_states_2.append(next_state)
@@ -287,6 +288,8 @@ for i_episode in range(num_episodes):
         
         loss = optimize_model()
         losses.append(loss)        
+        
+        torch.cuda.empty_cache()
         
         if done:
             episode_durations.append(t+1)
