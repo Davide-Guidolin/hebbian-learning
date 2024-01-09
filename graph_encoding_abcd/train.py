@@ -1,49 +1,55 @@
 import torch
 from model import *
 from data import DataManager
-from utils import model_to_unrolled, init_ABCD_parameters, update_weights
+from unrolled_model import UnrolledModel
 
-
-def train_step(model, train_loader, abcd_params):
-    t = model[0].weight.dtype
-    device = t = model[0].weight.device
+def init_ABCD_parameters(net: nn.Sequential, start_idx: int = 0, end_idx: int = -1, device: str = 'cpu') -> dict:
+    if end_idx == -1 or end_idx > len(net):
+        end_idx = len(net)
     
-    for i, (x, true_y) in enumerate(train_loader):
-        print(f"Batch {i}")
-        x = x.view(x.shape[0], -1).to(device).to(t)
-        for layer in model:
-            print(f"Train layer: {layer}  input shape: {x.shape}")
-            if type(layer) == nn.Linear:
-                y = layer(x)
-                
-                shared_w = False
-                if hasattr(layer, 'shared_weights'):
-                    shared_w = True
-                update_weights(layer, x, y, abcd_params, shared_w=shared_w)
-                x = y
-            else:
-                x = layer(x)
-                
-        acc = torch.sum(torch.argmax(y, dim=-1) == true_y) / true_y.shape[0]
-        print(f"Accuracy: {acc}")
+    params = {}
+    l_index = start_idx
+    i = start_idx
+    while i < end_idx:
+        if type(net[i]) == nn.Linear:
+            params[l_index] = {'A':None, 'B': None, 'C':None, 'D': None}
+            l_index += 1
+        i += 1
+    params[l_index] = {'A':None, 'B': None, 'C':None, 'D': None}
+    
+    l_index = start_idx
+    i = start_idx
+    while i < end_idx:
+        if type(net[i]) == nn.Linear:
+            layer = net[i]
+            # A
+            params[l_index]['A'] = torch.randn(layer.weight.shape[1], device=device)
+            
+            # B
+            params[l_index + 1]['B'] = torch.randn(layer.weight.shape[0], device=device)
+            
+            # C, D
+            params[l_index]['C'] = torch.randn((layer.weight.shape[0], layer.weight.shape[1]), device=device)
+            params[l_index]['D'] = torch.randn((layer.weight.shape[0], layer.weight.shape[1]), device=device)
+            l_index += 1
+        i += 1
+        
+    return params
+
 
 def main():
-    device = 'cpu'
-    model = CNNModel()
     
-    data = DataManager("CIFAR10")
-    train_loader = data.train_loader
-    test_loader = data.test_loader
-    
-    x, _ = next(iter(train_loader))
-    input_size = x.shape[-1]
+    model = OneConv()
+    in_size = 5
 
-    unrolled_model = model_to_unrolled(model, input_size, device=device)
+    unrolled_model = UnrolledModel(model, in_size)
     
-    print(unrolled_model)
-    ABCD_params = init_ABCD_parameters(unrolled_model, device=unrolled_model[0].weight.device)
+    ABCD_params = init_ABCD_parameters(unrolled_model.unrolled_model)
     
-    train_step(unrolled_model, train_loader, ABCD_params)
+    for layer in unrolled_model.unrolled_model:
+        if type(layer) == nn.Linear:
+            x = torch.randn(1, 2*5*5)
+            unrolled_model.update_weights(layer, x, layer(x), ABCD_params, shared_w=True)
 
 if __name__ == "__main__":
     main()

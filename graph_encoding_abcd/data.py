@@ -1,7 +1,9 @@
 from torchvision.datasets import CIFAR10, CIFAR100
 from torchvision.transforms import ToTensor
 from torch.utils.data import DataLoader
+import torch
 import os
+from copy import deepcopy
 
 class DataManager():
     
@@ -10,7 +12,9 @@ class DataManager():
         "CIFAR100": CIFAR100,
     }
     
-    def __init__(self, dataset_name: str = "CIFAR10", batch_size: int = 64, num_workers: int = 4, save_path: str = "./data"):
+    def __init__(self, dataset_name: str = "CIFAR10", batch_size: int = 64, num_workers: int = 0, save_path: str = "./data"):
+        torch.manual_seed(42)
+        
         self.dataset_name = dataset_name
         self.save_path = save_path
         self.batch_size = batch_size
@@ -18,9 +22,15 @@ class DataManager():
         
         os.makedirs(save_path, exist_ok=True)
         
-        self.train_loader = self.load_dataset(train=True)
-        self.test_loader = self.load_dataset(train=False)
-        
-    def load_dataset(self, train=True):
-        ds = self.dataset_classes[self.dataset_name](self.save_path, transform=ToTensor(), train=train, download=True)
-        return DataLoader(ds, batch_size=self.batch_size, shuffle=True if train else False, num_workers=self.num_workers)
+        self.train_set = self.dataset_classes[self.dataset_name](self.save_path, transform=ToTensor(), train=True, download=True)
+        self.test_set = self.dataset_classes[self.dataset_name](self.save_path, transform=ToTensor(), train=False, download=True)
+
+        self.train_loader = DataLoader(self.train_set, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+        self.test_loader = DataLoader(self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+    
+    def get_new_loader(self, train=True):
+        torch.manual_seed(42)
+        if train:
+            return DataLoader(self.train_set, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        else:
+            return DataLoader(self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)

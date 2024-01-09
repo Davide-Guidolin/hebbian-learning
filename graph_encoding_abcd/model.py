@@ -3,7 +3,7 @@ import torch.nn as nn
 class OneConv(nn.Module):
     def __init__(self):
         super(OneConv, self).__init__()
-        self.c1 = nn.Conv2d(1, 3, 3)
+        self.c1 = nn.Conv2d(2, 3, 3)
         
     def forward(self, x):
         return self.c1(x)
