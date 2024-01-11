@@ -24,7 +24,7 @@ def abcd(pre, post, a, b, c, d):
     
 
 def update_weights(layer, input, output, ABCD_params, lr=0.001, shared_w=False):
-    print(f"[{os.getpid()}] Update Weights")
+    # print(f"[{os.getpid()}] Update Weights")
     w_matrix = layer.weight
     
     A = ABCD_params[layer.idx]['A']

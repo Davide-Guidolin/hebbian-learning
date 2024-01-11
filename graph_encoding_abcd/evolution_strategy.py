@@ -7,22 +7,41 @@ from copy import deepcopy
 from unrolled_model import UnrolledModel, evaluate
 from data import DataManager
 
+
+def compute_ranks(x):
+  """
+  Returns rank as a vector of len(x) with integers from 0 to len(x)
+  """
+  assert x.ndim == 1
+  ranks = np.empty(len(x), dtype=int)
+  ranks[x.argsort()] = np.arange(len(x))
+  return ranks
+
+def compute_centered_ranks(x):
+  """
+  Maps x to [-0.5, 0.5] and returns the rank
+  """
+  y = compute_ranks(x.ravel()).reshape(x.shape).astype(np.float32)
+  y /= (x.size - 1)
+  y -= .5
+  return y
+
 class EvolutionStrategy:
-    def __init__(self, rolled_model, population_size=100, sigma=0.1, learning_rate=0.2, decay=0.995, num_threads=1, distribution='normal'):
+    def __init__(self, rolled_model, population_size=100, sigma=0.1, learning_rate=0.2, num_threads=1, distribution='normal'):
         self.model = rolled_model
         
         self.population_size = population_size
         self.sigma = sigma
         self.learning_rate = learning_rate
         self.update_factor = self.learning_rate / (self.population_size * self.sigma)
-        self.decay = decay
+        self.perturbation_factor = 0.01
         self.num_threads = num_threads
-        self.distribution = distribution
         
         self.data = DataManager("CIFAR10")
         self.input_size = next(iter(self.data.train_loader))[0].shape[-1]
         
         self.unrolled_model = UnrolledModel(self.model, self.input_size)
+        self.params = self.init_ABCD_parameters(self.unrolled_model.get_new_model())
         
     def init_ABCD_parameters(self, net: nn.Sequential, start_idx: int = 0, end_idx: int = -1, device: str = 'cpu') -> dict:
         if end_idx == -1 or end_idx > len(net):
@@ -57,10 +76,25 @@ class EvolutionStrategy:
             
         return params
     
+    
+    def perturbate(self, params):
+        print("Perturbating")
+        new_p = deepcopy(params)
+        for layer in new_p:
+            for p in new_p[layer]:
+                if layer == 0 and p == 'B':
+                    continue
+                if layer == list(new_p.keys())[-1] and p != 'B':
+                    continue
+                new_p[layer][p].add_(self.perturbation_factor * torch.randn_like(new_p[layer][p]))
+    
+        return new_p
+    
+    
     def init_population(self):
         pop = []
         for _ in range(self.population_size):
-            pop.append(self.init_ABCD_parameters(self.unrolled_model.get_new_model()))
+            pop.append(self.perturbate(self.params))
             
         return pop
         
@@ -118,15 +152,28 @@ class EvolutionStrategy:
                 scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p))
         
         scores = np.array(scores)
-        print(scores)
-        exit(0)
+        # scores = np.random.rand(len(population))
+        # print(scores)
+        print(f"Best accuracy: {np.amax(scores)}")
 
         return scores    
     
     
     def update_params(self, population, scores):
-        # Take best population and update parameters
-        pass
+        ranks = compute_centered_ranks(scores)
+                    
+        for layer in population[0].keys():
+            for key in population[0][layer].keys():
+                if layer == 0 and key == 'B':
+                    continue
+                if layer == list(population[0].keys())[-1] and key != 'B':
+                    continue
+                
+                param_pop = np.array([p[layer][key] for p in population])
+                
+                self.params[layer][key].add_(torch.from_numpy(self.update_factor * np.dot(param_pop.T, ranks).T))
+        
+        print("Update done")
     
     
     def run(self, iterations):
@@ -134,12 +181,11 @@ class EvolutionStrategy:
         parallel = self.num_threads > 1
         
         for iteration in range(iterations):
+            print(f"Iter [{iteration}/{iterations}]")
             population = self.init_population()
             scores = self.get_scores(population, parallel=parallel)
-            exit(0)
             self.update_params(population, scores)
             
-            print(f"Iter [{iteration}/{iterations}]: Reward {scores.mean()}")
             
         # if pool is not None:
         #     pool.close()

@@ -173,36 +173,35 @@ class UnrolledModel:
         
         
     
-def evaluate(layers, data_loader, abcd_params):
+def evaluate(model, data_loader, abcd_params):
     print(f"[{os.getpid()}] Starting evaluation")
-    model = nn.Sequential(*layers)
     t = model[0].weight.dtype
     device = t = model[0].weight.device
 
     correct = 0
     total = 0
     for i, (x, true_y) in enumerate(data_loader):
-        print(f"[{os.getpid()}] Batch {i}/{len(data_loader)}")
+        if i%50 == 0:
+            print(f"[{os.getpid()}] Batch {i}/{len(data_loader)}")
         x = x.view(x.shape[0], -1).to(device).to(t)
-        
-        y = model(x)
-        # for layer in model:
+
+        for layer in model:
             # print(f"[{os.getpid()}] Running layer: {layer}  input shape: {x.shape}")
-            # if type(layer) == nn.Linear:
-            #     y = layer(x)
+            if type(layer) == nn.Linear:
+                y = layer(x)
                 
-            #     shared_w = False
-            #     if hasattr(layer, 'shared_weights'):
-            #         shared_w = True
+                shared_w = False
+                if hasattr(layer, 'shared_weights'):
+                    shared_w = True
                 
-            #     print(f"[{os.getpid()}] Update weights")
-            #     update_weights(layer, x, y, abcd_params, shared_w=shared_w)
-            #     x = y
-            # else:
-            #     x = layer(x)
+                # print(f"[{os.getpid()}] Update weights")
+                update_weights(layer, x, y, abcd_params, shared_w=shared_w)
+                x = y
+            else:
+                x = layer(x)
                 
-        correct += 1 #torch.sum(torch.argmax(y, dim=-1) == true_y)
-        total += 1 #true_y.shape[0]
+        correct += torch.sum(torch.argmax(y, dim=-1) == true_y)
+        total += true_y.shape[0]
 
     acc = correct/total
     print(f"[{os.getpid()}]Accuracy: {acc}")
