@@ -3,8 +3,10 @@ import torch.nn as nn
 import numpy as np
 import torch.multiprocessing as mp
 from copy import deepcopy
+import os
 
-from unrolled_model import UnrolledModel, evaluate
+from unrolled_model import UnrolledModel
+from fitness import evaluate
 from data import DataManager
 
 
@@ -106,18 +108,18 @@ class EvolutionStrategy:
             print("Parallelizing")
             processes = []
             
-            correct = []
-            total = []
-
+            manager = mp.Manager()
+            shared_dict = manager.dict()
+            
             pop_evaluated = 0
             processes_used = 0
             processes_joined = 0
-            while pop_evaluated < len(population):
+            while pop_evaluated < len(population):                
                 print(f"Processes spawned: {len(processes)}")
                 if processes_used < self.num_threads:
-                    loader = self.data.get_new_loader(train=True)
-                    # model = self.unrolled_model.get_new_model()
-                    score = mp.Process(target=evaluate, args=(deepcopy(self.unrolled_model.layers), loader, population[pop_evaluated]))
+                    loader = self.data.get_new_loader(train=False)
+                    model = self.unrolled_model.get_new_model()
+                    score = mp.Process(target=evaluate, args=(model, loader, population[pop_evaluated], pop_evaluated, shared_dict))
                     print(f"Evaluating population {pop_evaluated}")
                     score.start()
                     
@@ -129,21 +131,10 @@ class EvolutionStrategy:
                     processes_joined += 1
                     processes_used -= 1
             
-            print("Wait for join")
             for score in processes:
                 score.join()
-                
-            # for j, p in enumerate(population):
-            #     print(f"Creating model {j}")
-            #     worker_args.append((self.data.train_set, p))
-
-            # corr_total = pool.starmap(deepcopy(self.unrolled_model).evaluate, worker_args)
-            # corr_total.wait()
-            # for j, (corr, tot) in enumerate(corr_total):
-            #     correct[j] += corr
-            #     total[j] += tot
-
-            scores = correct/total
+            
+            scores = list(dict(sorted(shared_dict.items(), key=lambda x: x[0])).values())
             
         else:
             print("No Parallel")
@@ -152,8 +143,6 @@ class EvolutionStrategy:
                 scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p))
         
         scores = np.array(scores)
-        # scores = np.random.rand(len(population))
-        # print(scores)
         print(f"Best accuracy: {np.amax(scores)}")
 
         return scores    
@@ -173,12 +162,20 @@ class EvolutionStrategy:
                 
                 self.params[layer][key].add_(torch.from_numpy(self.update_factor * np.dot(param_pop.T, ranks).T))
         
-        print("Update done")
+        print("Parameters update done")
     
     
     def run(self, iterations):
         
+        # export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1
         parallel = self.num_threads > 1
+        
+        if parallel and os.environ['MKL_NUM_THREADS'] != "1":
+            print(f"Setting MKL_NUM_THREADS to 1 for parallel execution")
+            os.environ['MKL_NUM_THREADS'] = "1"
+        if parallel and os.environ['OMP_NUM_THREADS'] != "1":
+            print(f"Setting OMP_NUM_THREADS to 1 for parallel execution")
+            os.environ['OMP_NUM_THREADS'] = "1"       
         
         for iteration in range(iterations):
             print(f"Iter [{iteration}/{iterations}]")
