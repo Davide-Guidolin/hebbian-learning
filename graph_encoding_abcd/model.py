@@ -37,12 +37,12 @@ class CNNModel(nn.Module):
     def __init__(self):
         super(CNNModel, self).__init__()
         # Define your CNN layers here
-        self.conv1 = nn.Conv2d(3, 8, 5)
+        self.conv1 = nn.Conv2d(3, 3, 5)
         self.pool1 = nn.MaxPool2d(2)
         self.relu1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(8, 16, 3)
+        self.conv2 = nn.Conv2d(3, 3, 3)
         self.relu2 = nn.ReLU()
-        self.conv3 = nn.Conv2d(16, 32, 3)
+        self.conv3 = nn.Conv2d(3, 8, 3)
         self.relu3 = nn.ReLU()
         self.fc1 = nn.Linear(768, 10)
         

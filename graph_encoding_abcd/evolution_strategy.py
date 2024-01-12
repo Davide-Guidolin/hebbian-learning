@@ -36,7 +36,7 @@ class EvolutionStrategy:
         self.sigma = sigma
         self.learning_rate = learning_rate
         self.update_factor = self.learning_rate / (self.population_size * self.sigma)
-        self.perturbation_factor = 0.01
+        self.perturbation_factor = 1
         self.num_threads = num_threads
         
         self.data = DataManager("CIFAR10")

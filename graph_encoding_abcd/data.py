@@ -13,7 +13,6 @@ class DataManager():
     }
     
     def __init__(self, dataset_name: str = "CIFAR10", batch_size: int = 32, num_workers: int = 0, save_path: str = "./data"):
-        torch.manual_seed(42)
         
         self.dataset_name = dataset_name
         self.save_path = save_path
@@ -29,7 +28,7 @@ class DataManager():
         self.test_loader = DataLoader(self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
     
     def get_new_loader(self, train=True):
-        torch.manual_seed(42)
+        torch.manual_seed(53)
         if train:
             return DataLoader(self.train_set, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
         else:

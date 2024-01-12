@@ -2,6 +2,7 @@ import os
 import torch.nn as nn
 import torch
 from hebbian import update_weights
+from torch.profiler import profile, record_function, ProfilerActivity
 
 def evaluate(model, data_loader, abcd_params, pop_index=-1, shared_dict=None):
     print(f"[{os.getpid()}] Starting evaluation")
@@ -14,7 +15,7 @@ def evaluate(model, data_loader, abcd_params, pop_index=-1, shared_dict=None):
         if i%50 == 0:
             print(f"[{os.getpid()}] Batch {i}/{len(data_loader)}")
         x = x.view(x.shape[0], -1).to(device).to(t)
-
+        
         for layer in model:
             # print(f"[{os.getpid()}] Running layer: {layer}  input shape: {x.shape}")
             if type(layer) == nn.Linear:
@@ -26,19 +27,23 @@ def evaluate(model, data_loader, abcd_params, pop_index=-1, shared_dict=None):
                 
                 # print(f"[{os.getpid()}] Update weights")
                 update_weights(layer, x, y, abcd_params, shared_w=shared_w)
+                
                 x = y
             else:
                 x = layer(x)
-                
-        correct += torch.sum(torch.argmax(y, dim=-1) == true_y)
+        
+        # print(f"[{os.getpid()}]", x[0])
+        # print(torch.argmax(x, dim=-1))
+        correct += torch.sum(torch.argmax(x, dim=-1) == true_y)
         total += true_y.shape[0]
 
+    print(f"[{os.getpid()}] {correct} {total}")
     acc = correct/total
     print(f"[{os.getpid()}]Accuracy: {acc}")
     
     if shared_dict is not None:
         shared_dict[pop_index] = acc
-        
+    
     return acc
         
     
