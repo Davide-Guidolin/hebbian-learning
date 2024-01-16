@@ -349,7 +349,15 @@ class Unrolled_GE(GraphEncoding):
                 vertices = [i for i in range(len(nodes))]
                 G.add_vertices(vertices)
                 G.vs["type"] = nodes
+                
+                # lc = len(connection)
+                # if lc > 2_000_000:
+                #     for i in range(0, lc, 2_000_000):
+                #         G.add_edges(connection[i:min(i+2_000_000, lc)])
+                        
+                # else:
                 G.add_edges(connection)
+                    
                 edge_weight = np.array(edge_weight, dtype=np.float16)      
                 edge_weight = np.abs(edge_weight)      
           

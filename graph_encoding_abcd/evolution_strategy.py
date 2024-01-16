@@ -36,7 +36,7 @@ class EvolutionStrategy:
         self.sigma = sigma
         self.learning_rate = learning_rate
         self.update_factor = self.learning_rate / (self.population_size * self.sigma)
-        self.perturbation_factor = 1
+        self.perturbation_factor = 1.5
         self.num_threads = num_threads
         
         self.data = DataManager("CIFAR10")
@@ -114,7 +114,7 @@ class EvolutionStrategy:
             pop_evaluated = 0
             processes_used = 0
             processes_joined = 0
-            while pop_evaluated < len(population):                
+            while pop_evaluated < len(population):
                 print(f"Processes spawned: {len(processes)}")
                 if processes_used < self.num_threads:
                     loader = self.data.get_new_loader(train=False)
@@ -133,6 +133,7 @@ class EvolutionStrategy:
             
             for score in processes:
                 score.join()
+                score.close()
             
             scores = list(dict(sorted(shared_dict.items(), key=lambda x: x[0])).values())
             

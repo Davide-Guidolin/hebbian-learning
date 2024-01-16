@@ -93,10 +93,12 @@ class UnrolledModel:
             dtype=torch.bool
         )
         
+        del coo_m
         
         print("MEM after mask_t:", psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
         print("Multiply weights")
-        layer.weight.data *= mask_tensor.t()
+        
+        layer.weight.data.mul_(mask_tensor.t())
         
         del mask_tensor
         
@@ -161,7 +163,7 @@ class UnrolledModel:
             elif graph.layers[idx_layer][1] == 'module':
                 t = type(graph.layers[idx_layer][0])
                 if t == nn.BatchNorm2d:
-                    layers.append(t(last_feat))
+                    layers.append(nn.BatchNorm1d(last_feat))
                 else:
                     layers.append(t())
                     

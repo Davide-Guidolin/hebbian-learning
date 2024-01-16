@@ -37,12 +37,14 @@ class CNNModel(nn.Module):
     def __init__(self):
         super(CNNModel, self).__init__()
         # Define your CNN layers here
-        self.conv1 = nn.Conv2d(3, 3, 5)
+        self.conv1 = nn.Conv2d(3, 8, 5)
         self.pool1 = nn.MaxPool2d(2)
+        self.bn1 = nn.BatchNorm2d(8)
         self.relu1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(3, 3, 3)
+        self.conv2 = nn.Conv2d(8, 16, 3)
+        self.bn2 = nn.BatchNorm2d(16)
         self.relu2 = nn.ReLU()
-        self.conv3 = nn.Conv2d(3, 8, 3)
+        self.conv3 = nn.Conv2d(16, 32, 3)
         self.relu3 = nn.ReLU()
         self.fc1 = nn.Linear(768, 10)
         
@@ -85,6 +87,45 @@ class BaseNet(nn.Module):
         out_size = get_out_size(out_size, 3, pooling_size=2)
 
         self.fc4 = nn.Linear(out_size*out_size*1536, 10)
+        
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.max_pool1(x)
+        x = self.bn1(x)
+        
+        x = self.conv2(x)
+        x = self.max_pool2(x)
+        x = self.bn2(x)
+        
+        x = self.conv3(x)
+        x = self.avg_pool3(x)
+        x = self.bn3(x)
+
+        x = self.fc4(x.view(x.shape[0], -1))
+
+        return x
+    
+    
+class BaseNet2(nn.Module):
+    def __init__(self):
+        super(BaseNet2, self).__init__()
+        
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=48, kernel_size=5)
+        self.max_pool1 = nn.MaxPool2d(4, 2, 1)
+        self.bn1 = nn.BatchNorm2d(192)
+        out_size = get_out_size(32, 5, pooling_size=2)
+        
+        self.conv2 = nn.Conv2d(in_channels=48, out_channels=192, kernel_size=3)
+        self.max_pool2 = nn.MaxPool2d(4, 2, 1)
+        self.bn2 = nn.BatchNorm2d(192)
+        out_size = get_out_size(out_size, 3, pooling_size=2)
+        
+        self.conv3 = nn.Conv2d(in_channels=192, out_channels=768, kernel_size=3)
+        self.avg_pool3 = nn.AvgPool2d(2, 2, 0)
+        self.bn3 = nn.BatchNorm2d(768)
+        out_size = get_out_size(out_size, 3, pooling_size=2)
+
+        self.fc4 = nn.Linear(out_size*out_size*768, 10)
         
     def forward(self, x):
         x = self.conv1(x)

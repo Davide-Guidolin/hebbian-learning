@@ -44,7 +44,7 @@ def update_weights(layer, input, output, ABCD_params, lr=0.001, shared_w=False):
         out_ch = len(list(layer.shared_weights[0].keys()))
         k_size = len(list(layer.shared_weights[0][0].keys()))
         
-        w_copy = deepcopy(w_matrix)
+        w_copy = w_matrix.clone()
         for i in range(in_ch):
             for o in range(out_ch):
                 for k in range(k_size):
