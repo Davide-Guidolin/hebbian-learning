@@ -23,10 +23,10 @@ def abcd(pre, post, a, b, c, d):
 
     result.addcmul_(c.unsqueeze(0).expand(s1, -1, -1), pre * post)
 
-    return torch.mean(result, dim=0).add_(d)
+    return torch.mean(result, dim=0) #.add_(d)
     
 
-def update_weights(layer, input, output, ABCD_params, lr=0.001, shared_w=False):
+def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False):
     # print(f"[{os.getpid()}] Update Weights")
     
     w_matrix = layer.weight
@@ -58,4 +58,6 @@ def update_weights(layer, input, output, ABCD_params, lr=0.001, shared_w=False):
                     
         w_matrix = w_copy
 
-    layer.weight = nn.Parameter(lr * w_matrix, requires_grad=False)
+    w_matrix = lr * w_matrix.clamp(-1, 1)
+    
+    layer.weight = nn.Parameter(w_matrix, requires_grad=False)

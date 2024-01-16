@@ -29,14 +29,14 @@ def compute_centered_ranks(x):
   return y
 
 class EvolutionStrategy:
-    def __init__(self, rolled_model, population_size=100, sigma=0.1, learning_rate=0.2, num_threads=1, distribution='normal'):
+    def __init__(self, rolled_model, population_size=100, sigma=0.1, abcd_perturbation_std=0.5, abcd_learning_rate=0.001, num_threads=1, bp_last_layer=True, bp_learning_rate=0.0001, distribution='normal'):
         self.model = rolled_model
         
         self.population_size = population_size
         self.sigma = sigma
-        self.learning_rate = learning_rate
-        self.update_factor = self.learning_rate / (self.population_size * self.sigma)
-        self.perturbation_factor = 1.5
+        self.abcd_lr = abcd_learning_rate
+        self.update_factor = self.abcd_lr / (self.population_size * self.sigma)
+        self.perturbation_factor = abcd_perturbation_std
         self.num_threads = num_threads
         
         self.data = DataManager("CIFAR10")
@@ -44,6 +44,9 @@ class EvolutionStrategy:
         
         self.unrolled_model = UnrolledModel(self.model, self.input_size)
         self.params = self.init_ABCD_parameters(self.unrolled_model.get_new_model())
+        
+        self.bp_last_layer = bp_last_layer
+        self.bp_lr = bp_learning_rate
         
     def init_ABCD_parameters(self, net: nn.Sequential, start_idx: int = 0, end_idx: int = -1, device: str = 'cpu') -> dict:
         if end_idx == -1 or end_idx > len(net):
@@ -88,7 +91,9 @@ class EvolutionStrategy:
                     continue
                 if layer == list(new_p.keys())[-1] and p != 'B':
                     continue
-                new_p[layer][p].add_(self.perturbation_factor * torch.randn_like(new_p[layer][p]))
+                
+                noise = torch.randn_like(new_p[layer][p])
+                new_p[layer][p].add_(self.perturbation_factor * noise)
     
         return new_p
     
@@ -119,7 +124,7 @@ class EvolutionStrategy:
                 if processes_used < self.num_threads:
                     loader = self.data.get_new_loader(train=False)
                     model = self.unrolled_model.get_new_model()
-                    score = mp.Process(target=evaluate, args=(model, loader, population[pop_evaluated], pop_evaluated, shared_dict))
+                    score = mp.Process(target=evaluate, args=(model, loader, population[pop_evaluated], pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr))
                     print(f"Evaluating population {pop_evaluated}")
                     score.start()
                     
@@ -141,7 +146,7 @@ class EvolutionStrategy:
             print("No Parallel")
             scores = []
             for p in population:
-                scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p))
+                scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p, self.bp_last_layer))
         
         scores = np.array(scores)
         print(f"Best accuracy: {np.amax(scores)}")
@@ -171,12 +176,10 @@ class EvolutionStrategy:
         # export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1
         parallel = self.num_threads > 1
         
-        if parallel and os.environ['MKL_NUM_THREADS'] != "1":
-            print(f"Setting MKL_NUM_THREADS to 1 for parallel execution")
-            os.environ['MKL_NUM_THREADS'] = "1"
-        if parallel and os.environ['OMP_NUM_THREADS'] != "1":
-            print(f"Setting OMP_NUM_THREADS to 1 for parallel execution")
-            os.environ['OMP_NUM_THREADS'] = "1"       
+        if parallel:
+            if (not 'MKL_NUM_THREADS' in os.environ) or (not 'OMP_NUM_THREADS' in os.environ) or (os.environ['MKL_NUM_THREADS'] != "1") or (os.environ['OMP_NUM_THREADS'] != "1"):
+                print(f"For parallel execution run this command: export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1")
+                exit(0)
         
         for iteration in range(iterations):
             print(f"Iter [{iteration}/{iterations}]")
