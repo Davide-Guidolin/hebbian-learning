@@ -29,15 +29,15 @@ def compute_centered_ranks(x):
   return y
 
 class EvolutionStrategy:
-    def __init__(self, rolled_model, population_size=100, sigma=0.1, abcd_perturbation_std=0.5, abcd_learning_rate=0.001, num_threads=1, bp_last_layer=True, bp_learning_rate=0.0001, distribution='normal'):
+    def __init__(self, rolled_model, population_size=100, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.2, abcd_lr_decay=0.995, num_threads=1, bp_last_layer=True, bp_learning_rate=0.01):
         self.model = rolled_model
         
         self.population_size = population_size
         self.sigma = sigma
+        self.decay = abcd_lr_decay
         self.abcd_lr = abcd_learning_rate
-        self.update_factor = self.abcd_lr / (self.population_size * self.sigma)
         self.perturbation_factor = abcd_perturbation_std
-        self.num_threads = num_threads
+        self.num_threads = mp.cpu_count() if num_threads == -1 else num_threads
         
         self.data = DataManager("CIFAR10")
         self.input_size = next(iter(self.data.train_loader))[0].shape[-1]
@@ -47,6 +47,20 @@ class EvolutionStrategy:
         
         self.bp_last_layer = bp_last_layer
         self.bp_lr = bp_learning_rate
+        
+        
+    def normalize_params(self, params):
+        for layer in params:
+            for p in params[layer]:
+                if layer == 0 and p == 'B':
+                    continue
+                if layer == list(params.keys())[-1] and p != 'B':
+                    continue
+                
+                params[layer][p] = params[layer][p] / params[layer][p].abs().max()
+                
+        return params
+        
         
     def init_ABCD_parameters(self, net: nn.Sequential, start_idx: int = 0, end_idx: int = -1, device: str = 'cpu') -> dict:
         if end_idx == -1 or end_idx > len(net):
@@ -67,18 +81,16 @@ class EvolutionStrategy:
         while i < end_idx:
             if type(net[i]) == nn.Linear:
                 layer = net[i]
-                # A
+
                 params[l_index]['A'] = torch.randn(layer.weight.shape[1], device=device)
-                
-                # B
                 params[l_index + 1]['B'] = torch.randn(layer.weight.shape[0], device=device)
-                
-                # C, D
                 params[l_index]['C'] = torch.randn((layer.weight.shape[0], layer.weight.shape[1]), device=device)
                 params[l_index]['D'] = torch.randn((layer.weight.shape[0], layer.weight.shape[1]), device=device)
                 l_index += 1
             i += 1
-            
+        
+        params = self.normalize_params(params)
+        
         return params
     
     
@@ -94,7 +106,9 @@ class EvolutionStrategy:
                 
                 noise = torch.randn_like(new_p[layer][p])
                 new_p[layer][p].add_(self.perturbation_factor * noise)
-    
+
+        new_p = self.normalize_params(new_p)
+        
         return new_p
     
     
@@ -146,7 +160,7 @@ class EvolutionStrategy:
             print("No Parallel")
             scores = []
             for p in population:
-                scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p, self.bp_last_layer))
+                scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
         
         scores = np.array(scores)
         print(f"Best accuracy: {np.amax(scores)}")
@@ -156,7 +170,10 @@ class EvolutionStrategy:
     
     def update_params(self, population, scores):
         ranks = compute_centered_ranks(scores)
-                    
+        
+        ranks = (ranks - ranks.mean()) / ranks.std()
+        
+        self.update_factor = self.abcd_lr / (self.population_size * self.sigma)
         for layer in population[0].keys():
             for key in population[0][layer].keys():
                 if layer == 0 and key == 'B':
@@ -167,6 +184,12 @@ class EvolutionStrategy:
                 param_pop = np.array([p[layer][key] for p in population])
                 
                 self.params[layer][key].add_(torch.from_numpy(self.update_factor * np.dot(param_pop.T, ranks).T))
+                
+        if self.abcd_lr > 0.001:
+            self.abcd_lr *= self.decay
+
+        if self.sigma > 0.01:
+            self.sigma *= 0.999
         
         print("Parameters update done")
     
@@ -186,10 +209,5 @@ class EvolutionStrategy:
             population = self.init_population()
             scores = self.get_scores(population, parallel=parallel)
             self.update_params(population, scores)
-            
-            
-        # if pool is not None:
-        #     pool.close()
-        #     pool.join()
     
 

@@ -3,6 +3,10 @@ import torch.nn as nn
 from copy import deepcopy
 from torch.profiler import profile, record_function, ProfilerActivity
 
+# Linear (3072 -> 6272)
+# ~ 3  s no compiled
+# ~ 88 ms compiled
+@torch.compile()
 def abcd(pre, post, a, b, c, d):
     # return (a*pre)[:, None, :] + (b*post)[:, :, None] + c*pre[:, None, :]*post[:, :, None] + d
     s1 = pre.shape[0]
@@ -23,21 +27,19 @@ def abcd(pre, post, a, b, c, d):
 
     result.addcmul_(c.unsqueeze(0).expand(s1, -1, -1), pre * post)
 
-    return torch.mean(result, dim=0) #.add_(d)
+    return torch.mean(result, dim=0).add_(d)
     
-
+# @torch.compile()
 def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False):
-    # print(f"[{os.getpid()}] Update Weights")
-    
-    w_matrix = layer.weight
 
     A = ABCD_params[layer.idx]['A']
     B = ABCD_params[layer.idx + 1]['B']
     C = ABCD_params[layer.idx]['C']
     D = ABCD_params[layer.idx]['D']
-
+    
+    
+    # print(f"Before Max {layer.weight.data.max()}  Min {layer.weight.data.min()}")
     w_matrix = abcd(input, output, A, B, C, D)
-    # w_matrix = torch.mean(w_matrix, dim=0)
 
     if shared_w:
         in_ch = len(list(layer.shared_weights.keys()))
@@ -58,6 +60,7 @@ def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False)
                     
         w_matrix = w_copy
 
-    w_matrix = lr * w_matrix.clamp(-1, 1)
+    w_matrix = w_matrix / w_matrix.abs().max()
+    # print(f"Max {w_matrix.max()}  Min {w_matrix.min()}")
     
     layer.weight = nn.Parameter(w_matrix, requires_grad=False)
