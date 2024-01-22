@@ -3,10 +3,10 @@ from evolution_strategy import EvolutionStrategy
 
 def main():
     device = 'cpu'
-    model = BaseNet2()# BaseNet2()
+    model = BaseNet2()
     
     # TODO add args
-    es = EvolutionStrategy(model, population_size=1, num_threads=1)
+    es = EvolutionStrategy(model, population_size=10, num_threads=1)
     
     es.run(iterations=30)
     

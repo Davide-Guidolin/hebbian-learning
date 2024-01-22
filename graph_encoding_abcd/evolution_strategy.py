@@ -112,17 +112,18 @@ class EvolutionStrategy:
         return new_p
     
     
-    def init_population(self):
-        pop = []
-        for _ in range(self.population_size):
-            pop.append(self.perturbate(self.params))
+    # def init_population(self):
+    #     pop = []
+    #     for _ in range(self.population_size):
+    #         pop.append(self.perturbate(self.params))
             
-        return pop
+    #     return pop
         
     
-    def get_scores(self, population, parallel=None):
+    def get_scores(self, parallel=None):
         print("IN get_scores")
-        # Take population and run parallel evaluations
+        population = []
+
         if parallel:
             print("Parallelizing")
             processes = []
@@ -131,41 +132,42 @@ class EvolutionStrategy:
             shared_dict = manager.dict()
             
             pop_evaluated = 0
-            processes_used = 0
+            thread_used = 0
             processes_joined = 0
-            while pop_evaluated < len(population):
-                print(f"Processes spawned: {len(processes)}")
-                if processes_used < self.num_threads:
+            while pop_evaluated < self.population_size:
+                if thread_used < self.num_threads:
+                    population.append(self.perturbate(self.params))
                     loader = self.data.get_new_loader(train=False)
                     model = self.unrolled_model.get_new_model()
-                    score = mp.Process(target=evaluate, args=(model, loader, population[pop_evaluated], pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr))
-                    print(f"Evaluating population {pop_evaluated}")
-                    score.start()
+                    proc = mp.Process(target=evaluate, args=(model, loader, population[pop_evaluated], pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr))
+                    proc.start()
                     
-                    processes.append(score)
-                    processes_used += 1
+                    processes.append(proc)
+                    print(f"Processes spawned: {len(processes)}")
+                    thread_used += 1
                     pop_evaluated += 1
                 else:
                     processes[processes_joined].join()
                     processes_joined += 1
-                    processes_used -= 1
+                    thread_used -= 1
             
-            for score in processes:
-                score.join()
-                score.close()
+            for proc in processes:
+                proc.join()
+                proc.close()
             
             scores = list(dict(sorted(shared_dict.items(), key=lambda x: x[0])).values())
             
         else:
             print("No Parallel")
             scores = []
-            for p in population:
-                scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
+            for pop_idx in range(self.population_size):
+                p = self.perturbate(self.params)
+                population.append(p)
+                scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
         
         scores = np.array(scores)
-        print(f"Best accuracy: {np.amax(scores)}")
 
-        return scores    
+        return population, scores    
     
     
     def update_params(self, population, scores):
@@ -191,6 +193,7 @@ class EvolutionStrategy:
         if self.sigma > 0.01:
             self.sigma *= 0.999
         
+        del population
         print("Parameters update done")
     
     
@@ -204,10 +207,15 @@ class EvolutionStrategy:
                 print(f"For parallel execution run this command: export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1")
                 exit(0)
         
+        best_accuracies = []
         for iteration in range(iterations):
             print(f"Iter [{iteration}/{iterations}]")
-            population = self.init_population()
-            scores = self.get_scores(population, parallel=parallel)
+            population, scores = self.get_scores(parallel=parallel)
+            print(f"Best accuracy: {np.amax(scores)}")
+            best_accuracies.append(np.amax(scores))
             self.update_params(population, scores)
+        
+        for iteration in range(iterations):
+            print(f"Best accuracy [{iteration}/{iterations}]: {best_accuracies[iteration]}")
     
 

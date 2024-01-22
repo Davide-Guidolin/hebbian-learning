@@ -62,7 +62,7 @@ class UnrolledModel:
                     k = 0
                     in_ch_count += 1
         
-        print("MEM BEFORE LINEAR:", psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
+        print(f"MEM BEFORE LINEAR: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
 
         print(f"Linear ({in_feat} -> {out_feat})")
         if 'cuda' in self.device:
@@ -78,13 +78,13 @@ class UnrolledModel:
 
         print("create coo_m")
         
-        print("MEM BEFORE coo:", psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
+        print(f"MEM BEFORE coo: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
         coo_m = adj_m.tocoo()
         
         del adj_m
         # Create a sparse tensor from the COO matrix with values as 1
         
-        print("MEM BEFORE mask_t:", psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
+        print(f"MEM BEFORE mask_t: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
         print("create float tensor")
         mask_tensor = torch.sparse_coo_tensor(
             torch.LongTensor([coo_m.row.tolist(), coo_m.col.tolist()]),
@@ -95,7 +95,7 @@ class UnrolledModel:
         
         del coo_m
         
-        print("MEM after mask_t:", psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
+        print(f"MEM after mask_t: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
         print("Multiply weights")
         
         layer.weight.data.mul_(mask_tensor.t())

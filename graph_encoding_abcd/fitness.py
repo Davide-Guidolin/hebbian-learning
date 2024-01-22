@@ -6,7 +6,7 @@ from hebbian import update_weights
 from torch.profiler import profile, record_function, ProfilerActivity
 
 def evaluate(model, data_loader, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.MSELoss):
-    print(f"[{os.getpid()}] Starting evaluation")
+    print(f"[{os.getpid()}] Starting evaluation of population {pop_index}")
     
     t = model[0].weight.dtype
     device = model[0].weight.device
@@ -19,13 +19,8 @@ def evaluate(model, data_loader, abcd_params, pop_index=-1, shared_dict=None, ab
     correct = 0
     total = 0
     for i, (x, true_y) in enumerate(data_loader):
-        # if i == 5:
-        #     exit(0)
-        # print("=============================")
-        
-        # print(f"[{os.getpid()}] Batch {i}/{len(data_loader)}")
-        
-        if i%100 == 0:
+                
+        if i%75 == 0:
             print(f"[{os.getpid()}] Batch {i}/{len(data_loader)}")
         x = x.view(x.shape[0], -1).to(device)
         
@@ -44,11 +39,8 @@ def evaluate(model, data_loader, abcd_params, pop_index=-1, shared_dict=None, ab
                 x = y
             else:
                 if type(layer) == nn.Linear:
-                    # print(layer)
-                    
-                    # print(f"inp: {x.max()} {x.min()}")
                     y = layer(x)
-                    # print(f"out: {y.max()} {y.min()}")
+                    
                     if y.isnan().any():
                         print(f"[{os.getpid()}] Layer {l} produced NAN output!!! {layer}")
                         exit(1)
@@ -66,7 +58,7 @@ def evaluate(model, data_loader, abcd_params, pop_index=-1, shared_dict=None, ab
         correct += torch.sum(torch.argmax(x, dim=-1) == true_y)
         total += true_y.shape[0]
 
-    print(f"[{os.getpid()}] {correct} {total}")
+    print(f"[{os.getpid()}] {correct}/{total}")
     acc = correct/total
     print(f"[{os.getpid()}]Accuracy: {acc}")
     
