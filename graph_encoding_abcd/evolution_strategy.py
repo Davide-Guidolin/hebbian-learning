@@ -6,9 +6,8 @@ from copy import deepcopy
 import os
 
 from unrolled_model import UnrolledModel
-from fitness import evaluate
+from fitness import evaluate_classification, evaluate_car_racing
 from data import DataManager
-
 
 def compute_ranks(x):
   """
@@ -29,7 +28,7 @@ def compute_centered_ranks(x):
   return y
 
 class EvolutionStrategy:
-    def __init__(self, rolled_model, population_size=100, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.2, abcd_lr_decay=0.995, num_threads=1, bp_last_layer=True, bp_learning_rate=0.01):
+    def __init__(self, rolled_model, dataset_type="CIFAR10", population_size=100, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.2, abcd_lr_decay=0.995, num_threads=1, bp_last_layer=True, bp_learning_rate=0.01):
         self.model = rolled_model
         
         self.population_size = population_size
@@ -39,8 +38,12 @@ class EvolutionStrategy:
         self.perturbation_factor = abcd_perturbation_std
         self.num_threads = mp.cpu_count() if num_threads == -1 else num_threads
         
-        self.data = DataManager("CIFAR10")
-        self.input_size = next(iter(self.data.train_loader))[0].shape[-1]
+        self.dataset_type = dataset_type
+        if self.dataset_type != "CarRacing-v2":
+            self.data = DataManager(self.dataset_type)
+            self.input_size = next(iter(self.data.train_loader))[0].shape[-1]
+        else:
+            self.input_size = 64
         
         self.unrolled_model = UnrolledModel(self.model, self.input_size)
         self.params = self.init_ABCD_parameters(self.unrolled_model.get_new_model())
@@ -137,15 +140,21 @@ class EvolutionStrategy:
             while pop_evaluated < self.population_size:
                 if thread_used < self.num_threads:
                     population.append(self.perturbate(self.params))
-                    loader = self.data.get_new_loader(train=False)
                     model = self.unrolled_model.get_new_model()
-                    proc = mp.Process(target=evaluate, args=(model, loader, population[pop_evaluated], pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr))
+                    if self.dataset_type != "CarRacing-v2":
+                        loader = self.data.get_new_loader(train=False)
+                        args = (model, loader, population[pop_evaluated], pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr)
+                        target_fn = evaluate_classification
+                    else:
+                        args = (model, self.dataset_type, population[pop_evaluated], pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr)
+                        target_fn = evaluate_car_racing
+                    proc = mp.Process(target=target_fn, args=args)
                     proc.start()
                     
                     processes.append(proc)
-                    print(f"Processes spawned: {len(processes)}")
                     thread_used += 1
                     pop_evaluated += 1
+                    print(f"Processes spawned: {len(processes)} - Processes running {thread_used}")
                 else:
                     processes[processes_joined].join()
                     processes_joined += 1
@@ -163,7 +172,10 @@ class EvolutionStrategy:
             for pop_idx in range(self.population_size):
                 p = self.perturbate(self.params)
                 population.append(p)
-                scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
+                if self.dataset_type != "CarRacing-v2":
+                    scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
+                else:
+                    scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
         
         scores = np.array(scores)
 
@@ -214,6 +226,7 @@ class EvolutionStrategy:
             print(f"Best accuracy: {np.amax(scores)}")
             best_accuracies.append(np.amax(scores))
             self.update_params(population, scores)
+            del population
         
         for iteration in range(iterations):
             print(f"Best accuracy [{iteration}/{iterations}]: {best_accuracies[iteration]}")

@@ -2,10 +2,24 @@ import os
 import torch.nn as nn
 from torch.optim import SGD
 import torch
+import numpy as np
+import gymnasium as gym
+from gymnasium import wrappers as w
 from hebbian import update_weights
 from torch.profiler import profile, record_function, ProfilerActivity
 
-def evaluate(model, data_loader, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.MSELoss):
+
+class ScaledFloatFrame(gym.ObservationWrapper):
+    def __init__(self, env):
+        gym.ObservationWrapper.__init__(self, env)
+        self.observation_space = gym.spaces.Box(low=0, high=1, shape=env.observation_space.shape, dtype=np.float32)
+
+    def observation(self, observation):
+        # This undoes the memory optimization, use with smaller replay buffers only.
+        return np.array(observation).astype(np.float32) / 255.0
+    
+
+def evaluate_classification(model, data_loader, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.MSELoss):
     print(f"[{os.getpid()}] Starting evaluation of population {pop_index}")
     
     t = model[0].weight.dtype
@@ -66,3 +80,61 @@ def evaluate(model, data_loader, abcd_params, pop_index=-1, shared_dict=None, ab
         shared_dict[pop_index] = acc
     
     return acc
+
+
+def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.MSELoss):
+    print(f"[{os.getpid()}] Starting evaluation of population {pop_index}")
+    
+    env = gym.make(env_type)
+    env = w.ResizeObservation(env, 64)        # Resize and normalize input   
+    env = ScaledFloatFrame(env)
+    
+    state, _ = env.reset()
+    state = np.swapaxes(state,0,2)
+    
+    for p in model.parameters():
+        p.requires_grad = False
+    
+    total_rew = 0
+    neg_count = 0
+    while True:
+        x = torch.from_numpy(state.reshape(-1)).unsqueeze(0)
+        x.requires_grad = False
+        for l, layer in enumerate(model):
+            if type(layer) == nn.Linear:
+                y = layer(x)
+                
+                if y.isnan().any():
+                    print(f"[{os.getpid()}] Layer {l} produced NAN output!!! {layer}")
+                    exit(1)
+                
+                shared_w = False
+                if hasattr(layer, 'shared_weights'):
+                    shared_w = True
+                
+                update_weights(layer, x, y, abcd_params, shared_w=shared_w, lr=abcd_learning_rate)
+                
+                x = y
+            else:
+                x = layer(x)
+        
+        action = np.array([torch.tanh(x[:, 0]).squeeze(), torch.sigmoid(x[:, 1]).squeeze(), torch.sigmoid(x[:, 2]).squeeze()])
+        next_state, reward, done, truncated, info = env.step(action)
+        total_rew += reward
+        
+        neg_count = neg_count+1 if reward < 0.0 else 0
+        if (done or truncated or neg_count > 20):
+            break
+        
+        state = np.swapaxes(next_state, 0, 2)
+        
+    if shared_dict is not None:
+        shared_dict[pop_index] = total_rew
+    
+    print(f"[{os.getpid()}] Reward {total_rew}")
+    env.close()
+    
+    del model
+    del env
+    
+    return total_rew

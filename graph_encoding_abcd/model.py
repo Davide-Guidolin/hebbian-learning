@@ -115,22 +115,22 @@ class BaseNet2(nn.Module):
     def __init__(self):
         super(BaseNet2, self).__init__()
         
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=96, kernel_size=5)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=16, kernel_size=5)
         self.max_pool1 = nn.MaxPool2d(4, 2, 1)
-        self.bn1 = nn.BatchNorm2d(96)
+        self.bn1 = nn.BatchNorm2d(16)
         out_size = get_out_size(32, 5, pooling_size=2)
         
-        self.conv2 = nn.Conv2d(in_channels=96, out_channels=384, kernel_size=3)
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=48, kernel_size=3)
         self.max_pool2 = nn.MaxPool2d(4, 2, 1)
-        self.bn2 = nn.BatchNorm2d(384)
+        self.bn2 = nn.BatchNorm2d(48)
         out_size = get_out_size(out_size, 3, pooling_size=2)
         
-        self.conv3 = nn.Conv2d(in_channels=384, out_channels=192, kernel_size=3)
+        self.conv3 = nn.Conv2d(in_channels=48, out_channels=96, kernel_size=3)
         self.avg_pool3 = nn.AvgPool2d(2, 2, 0)
-        self.bn3 = nn.BatchNorm2d(192)
+        self.bn3 = nn.BatchNorm2d(96)
         out_size = get_out_size(out_size, 3, pooling_size=2)
 
-        self.fc4 = nn.Linear(out_size*out_size*192, 10)
+        self.fc4 = nn.Linear(out_size*out_size*96, 10)
         
     def forward(self, x):
         x = self.conv1(x)
@@ -148,3 +148,41 @@ class BaseNet2(nn.Module):
         x = self.fc4(x.view(x.shape[0], -1))
 
         return x
+    
+    
+class CNN_CarRacing(nn.Module):
+    "CNN+MLP with n=input_channels frames as input. Non-activated last layer's output"
+    def __init__(self):
+        super(CNN_CarRacing, self).__init__()
+        
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=6, kernel_size=3, stride=1, bias=False)
+        self.tanh1 = nn.Tanh() 
+        self.pool1 = nn.MaxPool2d(2, 2)
+        
+        self.conv2 = nn.Conv2d(in_channels=6, out_channels=8, kernel_size=5, stride=2, bias=False)
+        self.tanh2 = nn.Tanh()
+        self.pool2 = nn.MaxPool2d(2, 2)
+        
+        self.linear1 = nn.Linear(648, 128, bias=False)
+        self.tanh3 = nn.Tanh()
+        self.linear2 = nn.Linear(128, 64, bias=False)
+        self.tanh4 = nn.Tanh()
+        self.out = nn.Linear(64, 3, bias=False)
+    
+    
+    def forward(self, ob):
+        
+        state = torch.as_tensor(np.array(ob.copy()))
+        state = state.float()
+        
+        x1 = self.pool(torch.tanh(self.conv1(state)))
+        x2 = self.pool(torch.tanh(self.conv2(x1)))
+        
+        x3 = x2.view(-1)
+        
+        x4 = torch.tanh(self.linear1(x3))   
+        x5 = torch.tanh(self.linear2(x4))
+        
+        o = self.out(x5)
+
+        return x3, x4, x5, o

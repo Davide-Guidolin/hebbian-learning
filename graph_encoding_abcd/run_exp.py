@@ -3,10 +3,10 @@ from evolution_strategy import EvolutionStrategy
 
 def main():
     device = 'cpu'
-    model = BaseNet2()
+    model = CNN_CarRacing()
     
     # TODO add args
-    es = EvolutionStrategy(model, population_size=10, num_threads=1)
+    es = EvolutionStrategy(model, dataset_type="CarRacing-v2", population_size=4, num_threads=2)
     
     es.run(iterations=30)
     
