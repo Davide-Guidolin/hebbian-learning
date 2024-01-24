@@ -18,7 +18,6 @@ def abcd(pre, post, a, b, c, d):
 
     post = post.unsqueeze(-1).expand(-1, -1, s3)
     
-    # result = d.unsqueeze(0).repeat(s1, 1, 1)
     result = torch.zeros(s1, s2, s3)
     
     result.addcmul_(a.expand(s1, s2, -1), pre)
@@ -28,8 +27,8 @@ def abcd(pre, post, a, b, c, d):
     result.addcmul_(c.unsqueeze(0).expand(s1, -1, -1), pre * post)
 
     return torch.mean(result, dim=0).add_(d)
-    
-# @torch.compile()
+
+
 def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False):
 
     A = ABCD_params[layer.idx]['A']
@@ -37,8 +36,6 @@ def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False)
     C = ABCD_params[layer.idx]['C']
     D = ABCD_params[layer.idx]['D']
     
-    
-    # print(f"Before Max {layer.weight.data.max()}  Min {layer.weight.data.min()}")
     w_matrix = abcd(input, output, A, B, C, D)
 
     if shared_w:
@@ -61,6 +58,5 @@ def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False)
         w_matrix = w_copy
 
     w_matrix = w_matrix / w_matrix.abs().max()
-    # print(f"Max {w_matrix.max()}  Min {w_matrix.min()}")
     
     layer.weight = nn.Parameter(w_matrix, requires_grad=False)

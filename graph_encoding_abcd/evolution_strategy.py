@@ -3,11 +3,27 @@ import torch.nn as nn
 import numpy as np
 import torch.multiprocessing as mp
 from copy import deepcopy
-import os
+import os, psutil
 
 from unrolled_model import UnrolledModel
 from fitness import evaluate_classification, evaluate_car_racing
 from data import DataManager
+
+import wandb
+
+wandb.init(
+    # set the wandb project where this run will be logged
+    project="CarRacing_conv_unrolling_abcd",
+    
+    # track hyperparameters and run metadata
+    config={
+    "learning_rate": 0.2,
+    "population_size": 10,
+    "architecture": "CNN_CarRacing",
+    "dataset": "CarRacing-v2",
+    "epochs": 30,
+    }
+)
 
 def compute_ranks(x):
   """
@@ -28,7 +44,7 @@ def compute_centered_ranks(x):
   return y
 
 class EvolutionStrategy:
-    def __init__(self, rolled_model, dataset_type="CIFAR10", population_size=100, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.2, abcd_lr_decay=0.995, num_threads=1, bp_last_layer=True, bp_learning_rate=0.01):
+    def __init__(self, rolled_model, dataset_type="CIFAR10", population_size=100, num_threads=1, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.2, abcd_lr_decay=0.995, bp_last_layer=True, bp_learning_rate=0.01):
         self.model = rolled_model
         
         self.population_size = population_size
@@ -43,7 +59,7 @@ class EvolutionStrategy:
             self.data = DataManager(self.dataset_type)
             self.input_size = next(iter(self.data.train_loader))[0].shape[-1]
         else:
-            self.input_size = 64
+            self.input_size = 84
         
         self.unrolled_model = UnrolledModel(self.model, self.input_size)
         self.params = self.init_ABCD_parameters(self.unrolled_model.get_new_model())
@@ -92,13 +108,12 @@ class EvolutionStrategy:
                 l_index += 1
             i += 1
         
-        params = self.normalize_params(params)
+        # params = self.normalize_params(params)
         
         return params
     
     
     def perturbate(self, params):
-        print("Perturbating")
         new_p = deepcopy(params)
         for layer in new_p:
             for p in new_p[layer]:
@@ -110,18 +125,10 @@ class EvolutionStrategy:
                 noise = torch.randn_like(new_p[layer][p])
                 new_p[layer][p].add_(self.perturbation_factor * noise)
 
-        new_p = self.normalize_params(new_p)
+        # new_p = self.normalize_params(new_p)
         
         return new_p
     
-    
-    # def init_population(self):
-    #     pop = []
-    #     for _ in range(self.population_size):
-    #         pop.append(self.perturbate(self.params))
-            
-    #     return pop
-        
     
     def get_scores(self, parallel=None):
         print("IN get_scores")
@@ -170,12 +177,14 @@ class EvolutionStrategy:
             print("No Parallel")
             scores = []
             for pop_idx in range(self.population_size):
+                print(f"MEM BEFORE population {pop_idx} creation: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
                 p = self.perturbate(self.params)
+                print(f"MEM AFTER population {pop_idx} creation: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
                 population.append(p)
                 if self.dataset_type != "CarRacing-v2":
                     scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
                 else:
-                    scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
+                    scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, in_size=self.input_size))
         
         scores = np.array(scores)
 
@@ -198,7 +207,9 @@ class EvolutionStrategy:
                 param_pop = np.array([p[layer][key] for p in population])
                 
                 self.params[layer][key].add_(torch.from_numpy(self.update_factor * np.dot(param_pop.T, ranks).T))
-                
+        
+        # self.params = self.normalize_params(self.params)
+        
         if self.abcd_lr > 0.001:
             self.abcd_lr *= self.decay
 
@@ -224,6 +235,7 @@ class EvolutionStrategy:
             print(f"Iter [{iteration}/{iterations}]")
             population, scores = self.get_scores(parallel=parallel)
             print(f"Best accuracy: {np.amax(scores)}")
+            wandb.log({"best reward": np.amax(scores), "scores": scores}, step=iteration)
             best_accuracies.append(np.amax(scores))
             self.update_params(population, scores)
             del population
