@@ -19,6 +19,15 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         return np.array(observation).astype(np.float32) / 255.0
     
 
+class CropFrame(gym.ObservationWrapper):
+    def __init__(self, env):
+        gym.ObservationWrapper.__init__(self, env)
+        self.observation_space = gym.spaces.Box(low=0, high=1, shape=env.observation_space.shape, dtype=np.float32)
+
+    def observation(self, observation):
+        return np.array(observation)[:84][:, :84]
+
+
 def evaluate_classification(model, data_loader, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.MSELoss):
     print(f"[{os.getpid()}] Starting evaluation of population {pop_index}")
     
@@ -82,11 +91,12 @@ def evaluate_classification(model, data_loader, abcd_params, pop_index=-1, share
     return acc
 
 
-def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.MSELoss, in_size=84):
+def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.MSELoss, in_size=64):
     print(f"[{os.getpid()}] Starting evaluation of population {pop_index}")
     
     env = gym.make(env_type)
-    env = w.ResizeObservation(env, in_size)        # Resize and normalize input   
+    env = w.ResizeObservation(env, in_size)        # Resize and normalize input
+    env = CropFrame(env)
     env = ScaledFloatFrame(env)
     
     state, _ = env.reset()

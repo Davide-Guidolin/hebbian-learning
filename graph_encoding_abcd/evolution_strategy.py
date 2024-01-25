@@ -59,7 +59,7 @@ class EvolutionStrategy:
             self.data = DataManager(self.dataset_type)
             self.input_size = next(iter(self.data.train_loader))[0].shape[-1]
         else:
-            self.input_size = 84
+            self.input_size = 64
         
         self.unrolled_model = UnrolledModel(self.model, self.input_size)
         self.params = self.init_ABCD_parameters(self.unrolled_model.get_new_model())
@@ -153,7 +153,7 @@ class EvolutionStrategy:
                         args = (model, loader, population[pop_evaluated], pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr)
                         target_fn = evaluate_classification
                     else:
-                        args = (model, self.dataset_type, population[pop_evaluated], pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr)
+                        args = (model, self.dataset_type, population[pop_evaluated], pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr, self.input_size)
                         target_fn = evaluate_car_racing
                     proc = mp.Process(target=target_fn, args=args)
                     proc.start()
