@@ -2,6 +2,7 @@ from model import *
 from evolution_strategy import EvolutionStrategy
 import argparse
 
+import wandb
 # python3 run_exp.py --dataset CarRacing --population_size 4 --num_threads 1 --epochs 30
 
 def main():
@@ -31,6 +32,20 @@ def main():
         model = CNN_CarRacing()
     else:
         model = BaseNet2()
+    
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project="CarRacing_conv_unrolling_abcd",
+        
+        # track hyperparameters and run metadata
+        config={
+        "learning_rate": args.abcd_learning_rate,
+        "population_size": args.population_size,
+        "architecture": model,
+        "dataset": dataset,
+        "epochs": args.epochs,
+        }
+    )
     
     es = EvolutionStrategy(model,
                            dataset_type=dataset,

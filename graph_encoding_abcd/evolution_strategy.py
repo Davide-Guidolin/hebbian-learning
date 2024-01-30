@@ -11,20 +11,6 @@ from data import DataManager
 
 import wandb
 
-wandb.init(
-    # set the wandb project where this run will be logged
-    project="CarRacing_conv_unrolling_abcd",
-    
-    # track hyperparameters and run metadata
-    config={
-    "learning_rate": 0.2,
-    "population_size": 10,
-    "architecture": "CNN_CarRacing",
-    "dataset": "CarRacing-v2",
-    "epochs": 30,
-    }
-)
-
 def compute_ranks(x):
   """
   Returns rank as a vector of len(x) with integers from 0 to len(x)
@@ -68,7 +54,7 @@ class EvolutionStrategy:
         self.bp_lr = bp_learning_rate
         
         
-    def normalize_params(self, params):
+    def normalize_params(self, params): # Not used
         for layer in params:
             for p in params[layer]:
                 if layer == 0 and p == 'B':
@@ -108,8 +94,6 @@ class EvolutionStrategy:
                 l_index += 1
             i += 1
         
-        # params = self.normalize_params(params)
-        
         return params
     
     
@@ -124,15 +108,39 @@ class EvolutionStrategy:
                 
                 noise = torch.randn_like(new_p[layer][p])
                 new_p[layer][p].add_(self.perturbation_factor * noise)
-
-        # new_p = self.normalize_params(new_p)
         
         return new_p
     
     
-    def get_scores(self, parallel=None):
-        print("IN get_scores")
+    def start_new_eval(self, population, processes, thread_used, pop_evaluated, shared_dict):
+        p = self.perturbate(self.params)
+        population.append(p)
+        model = self.unrolled_model.get_new_model()
+        shared_dict[pop_evaluated] = None
+        if self.dataset_type != "CarRacing-v2":
+            loader = self.data.get_new_loader(train=False)
+            args = (model, loader, p, pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr)
+            target_fn = evaluate_classification
+        else:
+            args = (model, self.dataset_type, p, pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr, self.input_size)
+            target_fn = evaluate_car_racing
+        proc = mp.Process(target=target_fn, args=args)
+        proc.start()
+        
+        processes.append(proc)
+        thread_used += 1
+        pop_evaluated += 1
+        print(f"Processes spawned: {len(processes)} - Processes running {thread_used}")
+        
+        return population, processes, thread_used, pop_evaluated
+    
+    
+    def get_scores(self, parallel=False, keep_best_only=False):
         population = []
+        
+        if keep_best_only:
+            best_score = 0
+            best_pop = None        
 
         if parallel:
             print("Parallelizing")
@@ -146,32 +154,45 @@ class EvolutionStrategy:
             processes_joined = 0
             while pop_evaluated < self.population_size:
                 if thread_used < self.num_threads:
-                    population.append(self.perturbate(self.params))
-                    model = self.unrolled_model.get_new_model()
-                    if self.dataset_type != "CarRacing-v2":
-                        loader = self.data.get_new_loader(train=False)
-                        args = (model, loader, population[pop_evaluated], pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr)
-                        target_fn = evaluate_classification
-                    else:
-                        args = (model, self.dataset_type, population[pop_evaluated], pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr, self.input_size)
-                        target_fn = evaluate_car_racing
-                    proc = mp.Process(target=target_fn, args=args)
-                    proc.start()
-                    
-                    processes.append(proc)
-                    thread_used += 1
-                    pop_evaluated += 1
-                    print(f"Processes spawned: {len(processes)} - Processes running {thread_used}")
+                    population, processes, thread_used, pop_evaluated = self.start_new_eval(population, processes, thread_used, pop_evaluated, shared_dict)
                 else:
                     processes[processes_joined].join()
                     processes_joined += 1
                     thread_used -= 1
+                    
+                    if keep_best_only:
+                        print(f"MEM Before pop selection: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
+                        for pop, score in shared_dict.items():
+                            if score != None:
+                                if score > best_score:
+                                    print(f"New best score found: pop {pop} score {score}")
+                                    best_score = score
+                                    best_pop = population[pop]
+                                    del shared_dict[pop]
+                                
+                                population[pop] = None
+                                
+                        print(f"MEM After pop selection: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
+                        
             
             for proc in processes:
                 proc.join()
                 proc.close()
             
-            scores = list(dict(sorted(shared_dict.items(), key=lambda x: x[0])).values())
+            if keep_best_only:
+                print(f"MEM Before pop selection: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
+                for pop, score in shared_dict.items():
+                    if score != None:
+                        if score > best_score:
+                            print(f"New best score found: pop {pop} score {score}")
+                            best_score = score
+                            best_pop = population[pop]
+                            del shared_dict[pop]
+                            
+                        population[pop] = None
+                print(f"MEM After pop selection: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")       
+            else:
+                scores = list(dict(sorted(shared_dict.items(), key=lambda x: x[0])).values())
             
         else:
             print("No Parallel")
@@ -182,45 +203,66 @@ class EvolutionStrategy:
                 print(f"MEM AFTER population {pop_idx} creation: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
                 population.append(p)
                 if self.dataset_type != "CarRacing-v2":
-                    scores.append(evaluate(self.unrolled_model.get_new_model(), self.data.test_loader, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
+                    scores.append(evaluate_classification(self.unrolled_model.get_new_model(), self.data.test_loader, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
                 else:
                     scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, in_size=self.input_size))
+                
+                if keep_best_only:
+                    if scores[-1] > best_score:
+                        best_score = scores[-1]
+                        best_pop = population[-1]
+                        population[-1] = None
         
-        scores = np.array(scores)
-
-        return population, scores    
+        if keep_best_only:
+            return best_pop, best_score
+        else:
+            scores = np.array(scores)
+            return population, scores    
     
     
-    def update_params(self, population, scores):
-        ranks = compute_centered_ranks(scores)
+    def update_params(self, population, scores, keep_best_only=False):
         
-        ranks = (ranks - ranks.mean()) / ranks.std()
-        
-        self.update_factor = self.abcd_lr / (self.population_size * self.sigma)
-        for layer in population[0].keys():
-            for key in population[0][layer].keys():
-                if layer == 0 and key == 'B':
-                    continue
-                if layer == list(population[0].keys())[-1] and key != 'B':
-                    continue
-                
-                param_pop = np.array([p[layer][key] for p in population])
-                
-                self.params[layer][key].add_(torch.from_numpy(self.update_factor * np.dot(param_pop.T, ranks).T))
-        
-        # self.params = self.normalize_params(self.params)
-        
-        if self.abcd_lr > 0.001:
-            self.abcd_lr *= self.decay
+        if keep_best_only:
+            if scores > self.best_total_score:
+                for layer in population.keys():
+                    for key in population[layer].keys():
+                        if layer == 0 and key == 'B':
+                            continue
+                        if layer == list(population.keys())[-1] and key != 'B':
+                            continue
+                        
+                        self.params[layer][key] = population[layer][key] #self.params[layer][key] * 0.75 + population[layer][key] * 0.25
+        else:
+            ranks = compute_centered_ranks(scores)
+            
+            ranks = (ranks - ranks.mean()) / ranks.std()
+            
+            self.update_factor = self.abcd_lr / (self.population_size * self.sigma)
+            for layer in population[0].keys():
+                for key in population[0][layer].keys():
+                    if layer == 0 and key == 'B':
+                        continue
+                    if layer == list(population[0].keys())[-1] and key != 'B':
+                        continue
+                    
+                    param_pop = np.array([p[layer][key] for p in population])
+                    
+                    self.params[layer][key].add_(torch.from_numpy(self.update_factor * np.dot(param_pop.T, ranks).T))
+            
+            if self.abcd_lr > 0.001:
+                self.abcd_lr *= self.decay
 
-        if self.sigma > 0.01:
-            self.sigma *= 0.999
+            if self.sigma > 0.01:
+                self.sigma *= 0.999
         
         del population
         print("Parameters update done")
     
     
     def run(self, iterations):
+        keep_best_only = True
+        if keep_best_only:
+            self.best_total_score = 0
         
         # export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1
         parallel = self.num_threads > 1
@@ -230,17 +272,26 @@ class EvolutionStrategy:
                 print(f"For parallel execution run this command: export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1")
                 exit(0)
         
-        best_accuracies = []
+        best_scores = []
         for iteration in range(iterations):
             print(f"Iter [{iteration}/{iterations}]")
-            population, scores = self.get_scores(parallel=parallel)
-            print(f"Best accuracy: {np.amax(scores)}")
-            wandb.log({"best reward": np.amax(scores), "scores": scores}, step=iteration)
-            best_accuracies.append(np.amax(scores))
-            self.update_params(population, scores)
-            del population
+            population, scores = self.get_scores(parallel=parallel, keep_best_only=keep_best_only)
+            if not keep_best_only:
+                print(f"Best score: {np.amax(scores)}")
+                wandb.log({"best reward": np.amax(scores), "scores": scores}, step=iteration)
+                best_scores.append(np.amax(scores))
+                self.update_params(population, scores, keep_best_only=keep_best_only)
+                del population
+            else:
+                best_pop = population
+                best_score = scores
+                print(f"Best score: {best_score}")
+                wandb.log({"best reward": best_score}, step=iteration)
+                best_scores.append(best_score)
+                self.update_params(best_pop, best_score, keep_best_only=keep_best_only)
+                del best_pop
         
         for iteration in range(iterations):
-            print(f"Best accuracy [{iteration}/{iterations}]: {best_accuracies[iteration]}")
+            print(f"Best accuracy [{iteration}/{iterations}]: {best_scores[iteration]}")
     
 
