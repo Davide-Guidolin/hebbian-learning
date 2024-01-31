@@ -8,6 +8,7 @@ from gymnasium import wrappers as w
 from hebbian import update_weights
 from torch.profiler import profile, record_function, ProfilerActivity
 
+ACTIVATIONS_LIST = [nn.ReLU, nn.Tanh, nn.ELU, nn.LeakyReLU, nn.GELU, nn.Sigmoid] # add others if used
 
 class ScaledFloatFrame(gym.ObservationWrapper):
     def __init__(self, env):
@@ -47,7 +48,12 @@ def evaluate_classification(model, data_loader, abcd_params, pop_index=-1, share
             print(f"[{os.getpid()}] Batch {i}/{len(data_loader)}")
         x = x.view(x.shape[0], -1).to(device)
         
+        activation = False
         for l, layer in enumerate(model):
+            if activation:
+                activation = False
+                continue
+            
             if bp_last_layer and l == len(model)-1:
                 optim.zero_grad()
                 y = layer(x)
@@ -62,7 +68,12 @@ def evaluate_classification(model, data_loader, abcd_params, pop_index=-1, share
                 x = y
             else:
                 if type(layer) == nn.Linear:
+                    
                     y = layer(x)
+                    
+                    if l < len(model)-1 and type(model[l+1]) in ACTIVATIONS_LIST:
+                        activation = True
+                        y = model[l+1](y)
                     
                     if y.isnan().any():
                         print(f"[{os.getpid()}] Layer {l} produced NAN output!!! {layer}")
@@ -107,9 +118,19 @@ def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=
     with torch.no_grad():
         while True:
             x = torch.from_numpy(state.reshape(-1)).unsqueeze(0)
+            
+            activation = False
             for l, layer in enumerate(model):
+                if activation:
+                    activation = False
+                    continue
+                
                 if type(layer) == nn.Linear:
                     y = layer(x)
+                    
+                    if l < len(model)-1 and type(model[l+1]) in ACTIVATIONS_LIST:
+                        activation = True
+                        y = model[l+1](y)
                     
                     if y.isnan().any():
                         print(f"[{os.getpid()}] Layer {l} produced NAN output!!! {layer}")
