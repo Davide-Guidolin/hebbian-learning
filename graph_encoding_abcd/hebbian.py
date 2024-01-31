@@ -60,3 +60,17 @@ def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False)
     w_matrix = w_matrix / w_matrix.abs().max()
     
     layer.weight = nn.Parameter(w_matrix, requires_grad=False)
+    
+    
+def softhebb_update(layer, input, output, lr=0.0001, shared_w=False):
+    soft = torch.softmax(output, dim=-1)
+    
+    yx = torch.matmul(soft.t(), input)
+    yu = torch.multiply(soft, output)
+    yu = torch.sum(yu.t(), dim=1)
+    dw = (yx - yu.view(-1, 1)*layer.weight)
+    
+    #normalize
+    dw.div_(torch.abs(dw).amax())
+    
+    layer.weight.add_(lr * dw)
