@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from copy import deepcopy
 from torch.profiler import profile, record_function, ProfilerActivity
+import os, psutil
 
 # Linear (3072 -> 6272)
 # ~ 3  s no compiled
@@ -61,16 +62,44 @@ def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False)
     
     layer.weight = nn.Parameter(w_matrix, requires_grad=False)
     
+
+@torch.compile()
+def softhebb(inp, out, w):
+    soft = torch.softmax(out, dim=-1)
     
+    dw = torch.matmul(soft.t(), inp)
+    yu = torch.multiply(soft, out)
+    yu = torch.sum(yu.t(), dim=1).view(-1, 1) * w
+    dw -= yu
+    
+    del soft, yu
+    
+    return dw
+
+
 def softhebb_update(layer, input, output, lr=0.0001, shared_w=False):
-    soft = torch.softmax(output, dim=-1)
-    
-    yx = torch.matmul(soft.t(), input)
-    yu = torch.multiply(soft, output)
-    yu = torch.sum(yu.t(), dim=1)
-    dw = (yx - yu.view(-1, 1)*layer.weight)
-    
+    w_matrix = softhebb(input, output, layer.weight)
+
+    if shared_w:
+        in_ch = len(list(layer.shared_weights.keys()))
+        out_ch = len(list(layer.shared_weights[0].keys()))
+        k_size = len(list(layer.shared_weights[0][0].keys()))
+        
+        w_copy = w_matrix.clone()
+        for i in range(in_ch):
+            for o in range(out_ch):
+                for k in range(k_size):
+                    sw = layer.shared_weights[i][o][k]
+                    
+                    w_in, w_out = zip(*sw)
+                    
+                    w_values = w_matrix[w_out, w_in]
+                    m = torch.mean(w_values)
+                    w_copy[w_out, w_in] = m
+                    
+        w_matrix = w_copy
+        
     #normalize
-    dw.div_(torch.abs(dw).amax())
+    w_matrix = w_matrix / torch.abs(w_matrix).amax()
     
-    layer.weight.add_(lr * dw)
+    layer.weight = nn.Parameter(layer.weight + lr * w_matrix, requires_grad=False)

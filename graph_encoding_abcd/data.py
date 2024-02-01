@@ -12,7 +12,7 @@ class DataManager():
         "CIFAR100": CIFAR100,
     }
     
-    def __init__(self, dataset_name: str = "CIFAR10", batch_size: int = 32, num_workers: int = 0, save_path: str = "./data"):
+    def __init__(self, dataset_name: str = "CIFAR10", batch_size: int = 64, num_workers: int = 0, save_path: str = "./data"):
         
         self.dataset_name = dataset_name
         self.save_path = save_path

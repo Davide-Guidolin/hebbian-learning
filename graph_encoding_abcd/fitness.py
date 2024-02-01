@@ -1,11 +1,11 @@
-import os
+import os, psutil
 import torch.nn as nn
 from torch.optim import SGD
 import torch
 import numpy as np
 import gymnasium as gym
 from gymnasium import wrappers as w
-from hebbian import update_weights
+from hebbian import update_weights, softhebb_update
 from torch.profiler import profile, record_function, ProfilerActivity
 
 ACTIVATIONS_LIST = [nn.ReLU, nn.Tanh, nn.ELU, nn.LeakyReLU, nn.GELU, nn.Sigmoid] # add others if used
@@ -29,7 +29,7 @@ class CropFrame(gym.ObservationWrapper):
         return np.array(observation)[:84][:, :84]
 
 
-def evaluate_classification(model, data_loader, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.MSELoss):
+def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.CrossEntropyLoss, softhebb_train=False, softhebb_lr=0.001):
     print(f"[{os.getpid()}] Starting evaluation of population {pop_index}")
     
     t = model[0].weight.dtype
@@ -83,7 +83,10 @@ def evaluate_classification(model, data_loader, abcd_params, pop_index=-1, share
                     if hasattr(layer, 'shared_weights'):
                         shared_w = True
                     
-                    update_weights(layer, x, y, abcd_params, shared_w=shared_w, lr=abcd_learning_rate)
+                    if softhebb_train:
+                        softhebb_update(layer, x, y, shared_w=shared_w, lr=softhebb_lr)
+                    else:
+                        update_weights(layer, x, y, abcd_params, shared_w=shared_w, lr=abcd_learning_rate)
                     
                     x = y
                 else:

@@ -1,5 +1,6 @@
 from model import *
 from evolution_strategy import EvolutionStrategy
+from softhebb_train import SoftHebbTrain
 import argparse
 
 import wandb
@@ -20,6 +21,9 @@ def main():
     
     parser.add_argument('--bp_last_layer', action='store_true', help='Use backpropagation in the last layer')
     parser.add_argument('--bp_learning_rate', default=0.01, type=float, help='Learning rate to use for backpropagation')
+    
+    parser.add_argument('--softhebb', action='store_true', help='Train using Softhebb learning rule. To use only with classification tasks')
+    parser.add_argument('--softhebb_lr', default=0.001, type=float, help='Softhebb learning rate if training using Softhebb')
     
     args = parser.parse_args()
     
@@ -47,18 +51,27 @@ def main():
         }
     )
     
-    es = EvolutionStrategy(model,
+    if dataset == 'CarRacing-v2':
+        es = EvolutionStrategy(model,
+                               dataset_type=dataset,
+                               population_size=args.population_size,
+                               num_threads=args.num_threads,
+                               sigma=args.sigma,
+                               abcd_perturbation_std=args.abcd_perturbation_std,
+                               abcd_learning_rate=args.abcd_learning_rate,
+                               abcd_lr_decay=args.abcd_lr_decay,
+                               bp_last_layer=args.bp_last_layer,
+                               bp_learning_rate=args.bp_learning_rate)
+        
+        es.run(iterations=args.epochs)
+    else:
+        sh = SoftHebbTrain(model,
                            dataset_type=dataset,
-                           population_size=args.population_size,
-                           num_threads=args.num_threads,
-                           sigma=args.sigma,
-                           abcd_perturbation_std=args.abcd_perturbation_std,
-                           abcd_learning_rate=args.abcd_learning_rate,
-                           abcd_lr_decay=args.abcd_lr_decay,
                            bp_last_layer=args.bp_last_layer,
-                           bp_learning_rate=args.bp_learning_rate)
-    
-    es.run(iterations=args.epochs)
+                           bp_learning_rate=args.bp_learning_rate,
+                           softhebb_lr=args.softhebb_lr)
+        
+        sh.train(n_epochs=args.epochs)
     
     
 if __name__ == "__main__":

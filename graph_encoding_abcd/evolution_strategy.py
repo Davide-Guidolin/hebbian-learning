@@ -51,21 +51,7 @@ class EvolutionStrategy:
         self.params = self.init_ABCD_parameters(self.unrolled_model.get_new_model())
         
         self.bp_last_layer = bp_last_layer
-        self.bp_lr = bp_learning_rate
-        
-        
-    def normalize_params(self, params): # Not used
-        for layer in params:
-            for p in params[layer]:
-                if layer == 0 and p == 'B':
-                    continue
-                if layer == list(params.keys())[-1] and p != 'B':
-                    continue
-                
-                params[layer][p] = params[layer][p] / params[layer][p].abs().max()
-                
-        return params
-        
+        self.bp_lr = bp_learning_rate      
         
     def init_ABCD_parameters(self, net: nn.Sequential, start_idx: int = 0, end_idx: int = -1, device: str = 'cpu') -> dict:
         if end_idx == -1 or end_idx > len(net):
@@ -224,14 +210,18 @@ class EvolutionStrategy:
         
         if keep_best_only:
             if scores > self.best_total_score:
-                for layer in population.keys():
-                    for key in population[layer].keys():
-                        if layer == 0 and key == 'B':
-                            continue
-                        if layer == list(population.keys())[-1] and key != 'B':
-                            continue
-                        
-                        self.params[layer][key] = population[layer][key] #self.params[layer][key] * 0.75 + population[layer][key] * 0.25
+                up_pct = 0.85
+            else:
+                up_pct = 0.6
+                
+            for layer in population.keys():
+                for key in population[layer].keys():
+                    if layer == 0 and key == 'B':
+                        continue
+                    if layer == list(population.keys())[-1] and key != 'B':
+                        continue
+                    
+                    self.params[layer][key] = self.params[layer][key] * (1-up_pct) + population[layer][key] * up_pct
         else:
             ranks = compute_centered_ranks(scores)
             
@@ -249,18 +239,18 @@ class EvolutionStrategy:
                     
                     self.params[layer][key].add_(torch.from_numpy(self.update_factor * np.dot(param_pop.T, ranks).T))
             
-            if self.abcd_lr > 0.001:
-                self.abcd_lr *= self.decay
+        if self.abcd_lr > 0.001:
+            self.abcd_lr *= self.decay
 
-            if self.sigma > 0.01:
-                self.sigma *= 0.999
+        if self.sigma > 0.01:
+            self.sigma *= 0.999
         
         del population
         print("Parameters update done")
     
     
     def run(self, iterations):
-        keep_best_only = True
+        keep_best_only = False
         if keep_best_only:
             self.best_total_score = 0
         
