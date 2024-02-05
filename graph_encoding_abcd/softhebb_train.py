@@ -8,7 +8,7 @@ class SoftHebbTrain:
         
         self.dataset_type = dataset_type
         
-        self.data = DataManager(self.dataset_type, batch_size=64)
+        self.data = DataManager(self.dataset_type, batch_size=32)
         self.input_size = next(iter(self.data.train_loader))[0].shape[-1]
         
         self.unrolled_model = UnrolledModel(self.model, self.input_size)

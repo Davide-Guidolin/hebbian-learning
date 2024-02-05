@@ -45,7 +45,7 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
     for i, (x, true_y) in enumerate(data_loader):
                 
         if i%75 == 0:
-            print(f"[{os.getpid()}] Batch {i}/{len(data_loader)}")
+            print(f"[{os.getpid()}] Batch {i}/{len(data_loader)} Partial accuracy {correct/max(1,total):.5f}  ({correct}/{total})")
         x = x.view(x.shape[0], -1).to(device)
         
         activation = False
@@ -71,9 +71,10 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
                     
                     y = layer(x)
                     
+                    pre_act = y
                     if l < len(model)-1 and type(model[l+1]) in ACTIVATIONS_LIST:
                         activation = True
-                        y = model[l+1](y)
+                        y = model[l+1](pre_act)
                     
                     if y.isnan().any():
                         print(f"[{os.getpid()}] Layer {l} produced NAN output!!! {layer}")
@@ -84,7 +85,7 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
                         shared_w = True
                     
                     if softhebb_train:
-                        softhebb_update(layer, x, y, shared_w=shared_w, lr=softhebb_lr)
+                        softhebb_update(layer, x, pre_act, shared_w=shared_w, lr=softhebb_lr)
                     else:
                         update_weights(layer, x, y, abcd_params, shared_w=shared_w, lr=abcd_learning_rate)
                     

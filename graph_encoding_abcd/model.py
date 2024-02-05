@@ -115,22 +115,22 @@ class BaseNet2(nn.Module):
     def __init__(self):
         super(BaseNet2, self).__init__()
         
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=16, kernel_size=5)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=96, kernel_size=5)
         self.max_pool1 = nn.MaxPool2d(4, 2, 1)
-        self.bn1 = nn.BatchNorm2d(16)
+        self.bn1 = nn.BatchNorm2d(96)
         out_size = get_out_size(32, 5, pooling_size=2)
         
-        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3)
+        self.conv2 = nn.Conv2d(in_channels=96, out_channels=384, kernel_size=3)
         self.max_pool2 = nn.MaxPool2d(4, 2, 1)
-        self.bn2 = nn.BatchNorm2d(32)
+        self.bn2 = nn.BatchNorm2d(384)
         out_size = get_out_size(out_size, 3, pooling_size=2)
         
-        self.conv3 = nn.Conv2d(in_channels=32, out_channels=48, kernel_size=3)
+        self.conv3 = nn.Conv2d(in_channels=384, out_channels=384, kernel_size=3)
         self.avg_pool3 = nn.AvgPool2d(2, 2, 0)
-        self.bn3 = nn.BatchNorm2d(48)
+        self.bn3 = nn.BatchNorm2d(384)
         out_size = get_out_size(out_size, 3, pooling_size=2)
 
-        self.fc4 = nn.Linear(out_size*out_size*48, 10)
+        self.fc4 = nn.Linear(out_size*out_size*384, 10)
         
     def forward(self, x):
         x = self.conv1(x)

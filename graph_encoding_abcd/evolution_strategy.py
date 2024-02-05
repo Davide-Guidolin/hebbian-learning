@@ -210,7 +210,7 @@ class EvolutionStrategy:
         
         if keep_best_only:
             if scores > self.best_total_score:
-                up_pct = 0.85
+                up_pct = 0.8
             else:
                 up_pct = 0.6
                 
@@ -250,7 +250,7 @@ class EvolutionStrategy:
     
     
     def run(self, iterations):
-        keep_best_only = False
+        keep_best_only = True
         if keep_best_only:
             self.best_total_score = 0
         

@@ -30,6 +30,26 @@ def abcd(pre, post, a, b, c, d):
     return torch.mean(result, dim=0).add_(d)
 
 
+def shared_weights(layer, w_matrix):
+    in_ch = len(list(layer.shared_weights.keys()))
+    out_ch = len(list(layer.shared_weights[0].keys()))
+    k_size = len(list(layer.shared_weights[0][0].keys()))
+    
+    w_copy = w_matrix.clone()
+    for i in range(in_ch):
+        for o in range(out_ch):
+            for k in range(k_size):
+                sw = layer.shared_weights[i][o][k]
+                
+                w_in, w_out = zip(*sw)
+                
+                w_values = w_matrix[w_out, w_in]
+                m = torch.mean(w_values)
+                w_copy[w_out, w_in] = m
+                
+    return w_copy
+
+
 def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False):
 
     A = ABCD_params[layer.idx]['A']
@@ -40,66 +60,38 @@ def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False)
     w_matrix = abcd(input, output, A, B, C, D)
 
     if shared_w:
-        in_ch = len(list(layer.shared_weights.keys()))
-        out_ch = len(list(layer.shared_weights[0].keys()))
-        k_size = len(list(layer.shared_weights[0][0].keys()))
-        
-        w_copy = w_matrix.clone()
-        for i in range(in_ch):
-            for o in range(out_ch):
-                for k in range(k_size):
-                    sw = layer.shared_weights[i][o][k]
-                    
-                    w_in, w_out = zip(*sw)
-                    
-                    w_values = w_matrix[w_out, w_in]
-                    m = torch.mean(w_values)
-                    w_copy[w_out, w_in] = m
-                    
-        w_matrix = w_copy
+        w_matrix = shared_weights(layer, w_matrix)
 
     w_matrix = w_matrix / w_matrix.abs().max()
     
-    layer.weight = nn.Parameter(w_matrix, requires_grad=False)
+    layer.weight = nn.Parameter(lr * w_matrix, requires_grad=False)
     
 
 @torch.compile()
-def softhebb(inp, out, w):
-    soft = torch.softmax(out, dim=-1)
+def softhebb(x, pre_act, w):
+    soft = torch.softmax(pre_act, dim=-1)
+    max_neuron = torch.argmax(soft, dim=-1)
     
-    dw = torch.matmul(soft.t(), inp)
-    yu = torch.multiply(soft, out)
+    dw = torch.matmul(soft.t(), x)
+    yu = torch.multiply(soft, pre_act)
     yu = torch.sum(yu.t(), dim=1).view(-1, 1) * w
     dw -= yu
     
     del soft, yu
     
-    return dw
+    return dw, max_neuron
 
 
-def softhebb_update(layer, input, output, lr=0.0001, shared_w=False):
-    w_matrix = softhebb(input, output, layer.weight)
-
-    if shared_w:
-        in_ch = len(list(layer.shared_weights.keys()))
-        out_ch = len(list(layer.shared_weights[0].keys()))
-        k_size = len(list(layer.shared_weights[0][0].keys()))
-        
-        w_copy = w_matrix.clone()
-        for i in range(in_ch):
-            for o in range(out_ch):
-                for k in range(k_size):
-                    sw = layer.shared_weights[i][o][k]
-                    
-                    w_in, w_out = zip(*sw)
-                    
-                    w_values = w_matrix[w_out, w_in]
-                    m = torch.mean(w_values)
-                    w_copy[w_out, w_in] = m
-                    
-        w_matrix = w_copy
-        
-    #normalize
-    w_matrix = w_matrix / torch.abs(w_matrix).amax()
+def softhebb_update(layer, x, pre_act, lr=0.0001, shared_w=False):
     
-    layer.weight = nn.Parameter(layer.weight + lr * w_matrix, requires_grad=False)
+    w_update, max_neuron = softhebb(x, pre_act, layer.weight)
+    
+    #normalize
+    w_update = w_update / torch.abs(w_update).amax()
+
+    w_matrix = layer.weight + lr * w_update
+    
+    if shared_w:
+        w_matrix = shared_weights(layer, w_matrix)
+            
+    layer.weight = nn.Parameter(w_matrix, requires_grad=False)
