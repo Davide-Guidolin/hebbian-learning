@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 import torch.multiprocessing as mp
 from copy import deepcopy
-import os, psutil
+import os, psutil, sys
 
 from unrolled_model import UnrolledModel
 from fitness import evaluate_classification, evaluate_car_racing
@@ -30,7 +30,7 @@ def compute_centered_ranks(x):
   return y
 
 class EvolutionStrategy:
-    def __init__(self, rolled_model, dataset_type="CIFAR10", population_size=100, num_threads=1, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.02, abcd_lr_decay=0.995, bp_last_layer=True, bp_learning_rate=0.01):
+    def __init__(self, rolled_model, dataset_type="CIFAR10", population_size=100, num_threads=1, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.2, abcd_lr_decay=0.995, bp_last_layer=True, bp_learning_rate=0.01):
         self.model = rolled_model
         
         self.population_size = population_size
@@ -50,7 +50,7 @@ class EvolutionStrategy:
         self.unrolled_model = UnrolledModel(self.model, self.input_size)
         self.params = self.init_ABCD_parameters(self.unrolled_model.get_new_model())
         
-        print(f"ABCD parameters initialized: {self.get_ABCD_params_number()} parameters ({getsizeof(self.params) / 1024 ** 2:.5f} MB)")
+        print(f"ABCD parameters initialized: {self.get_ABCD_params_number()} parameters ({sys.getsizeof(self.params) / 1024:.5f} kB)")
         
         self.bp_last_layer = bp_last_layer
         self.bp_lr = bp_learning_rate      
@@ -318,6 +318,7 @@ class EvolutionStrategy:
             if (not 'MKL_NUM_THREADS' in os.environ) or (not 'OMP_NUM_THREADS' in os.environ) or (os.environ['MKL_NUM_THREADS'] != "1") or (os.environ['OMP_NUM_THREADS'] != "1"):
                 print(f"For parallel execution run this command: export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1")
                 exit(0)
+            mp.set_start_method('spawn')
         
         best_scores = []
         for iteration in range(iterations):
@@ -325,7 +326,8 @@ class EvolutionStrategy:
             population, scores = self.get_scores(parallel=parallel, keep_best_only=keep_best_only)
             if not keep_best_only:
                 print(f"Best score: {np.amax(scores)}")
-                wandb.log({"best reward": np.amax(scores), "scores": scores}, step=iteration)
+                print(f"Avg score: {np.mean(scores)}")
+                wandb.log({"best reward": np.amax(scores), "avg reward": np.mean(scores), "scores": scores}, step=iteration)
                 best_scores.append(np.amax(scores))
                 self.update_params(population, scores, keep_best_only=keep_best_only)
                 del population

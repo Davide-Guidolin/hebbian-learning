@@ -100,7 +100,7 @@ class UnrolledModel:
         print("NON ZERO params", torch.count_nonzero(mask_tensor.to_dense()))
         layer.weight.data.mul_(mask_tensor.t())
         
-        layer.mask_tensor = mask_tensor
+        layer.mask_tensor = mask_tensor.to_dense()
         layer.shared_weights = shared_w
         
         return layer
