@@ -97,11 +97,10 @@ class UnrolledModel:
         
         print(f"MEM after mask_t: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
         print("Multiply weights")
-        
+        print("NON ZERO params", torch.count_nonzero(mask_tensor.to_dense()))
         layer.weight.data.mul_(mask_tensor.t())
         
-        del mask_tensor
-        
+        layer.mask_tensor = mask_tensor
         layer.shared_weights = shared_w
         
         return layer

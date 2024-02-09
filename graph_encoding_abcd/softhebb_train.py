@@ -1,6 +1,7 @@
 from fitness import evaluate_classification
 from data import DataManager
 from unrolled_model import UnrolledModel
+import wandb
 
 class SoftHebbTrain:
     def __init__(self, rolled_model, dataset_type="CIFAR10", bp_last_layer=True, bp_learning_rate=0.01, softhebb_lr=0.001):
@@ -24,4 +25,4 @@ class SoftHebbTrain:
         for i in range(n_epochs):
             epoch_acc = evaluate_classification(m, loader, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, softhebb_train=True, softhebb_lr=self.softhebb_lr)
             print(f"[{i}/{n_epochs}] Acc: {epoch_acc:.2f}")
-        
+            wandb.log({"Accuracy": epoch_acc}, step=i)

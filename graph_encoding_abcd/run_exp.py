@@ -5,6 +5,7 @@ import argparse
 
 import wandb
 # python3 run_exp.py --dataset CarRacing --population_size 4 --num_threads 1 --epochs 30
+# python3 run_exp.py --dataset CIFAR10 --population_size 4 --num_threads 1 --epochs 30
 
 def main():
     parser = argparse.ArgumentParser()
@@ -36,10 +37,17 @@ def main():
         model = CNN_CarRacing()
     else:
         model = BaseNet2()
+        
+    if dataset == "CarRacing-v2":
+        project = "CarRacing_conv_unrolling_abcd"
+    elif args.softhebb:
+        project = "CIFAR-Softhebb"
+    else:
+        project = "CIFAR-ABCD"
     
     wandb.init(
         # set the wandb project where this run will be logged
-        project="CarRacing_conv_unrolling_abcd",
+        project=project,
         
         # track hyperparameters and run metadata
         config={
@@ -47,7 +55,10 @@ def main():
         "population_size": args.population_size,
         "architecture": model,
         "dataset": dataset,
+        "bp_last_layer": args.bp_last_layer,
+        "bp_learning_rate": args.bp_learning_rate,
         "epochs": args.epochs,
+        "args": args,
         }
     )
     

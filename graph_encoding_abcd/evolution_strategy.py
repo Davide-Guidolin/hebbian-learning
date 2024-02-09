@@ -30,7 +30,7 @@ def compute_centered_ranks(x):
   return y
 
 class EvolutionStrategy:
-    def __init__(self, rolled_model, dataset_type="CIFAR10", population_size=100, num_threads=1, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.2, abcd_lr_decay=0.995, bp_last_layer=True, bp_learning_rate=0.01):
+    def __init__(self, rolled_model, dataset_type="CIFAR10", population_size=100, num_threads=1, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.02, abcd_lr_decay=0.995, bp_last_layer=True, bp_learning_rate=0.01):
         self.model = rolled_model
         
         self.population_size = population_size
@@ -50,9 +50,26 @@ class EvolutionStrategy:
         self.unrolled_model = UnrolledModel(self.model, self.input_size)
         self.params = self.init_ABCD_parameters(self.unrolled_model.get_new_model())
         
+        print(f"ABCD parameters initialized: {self.get_ABCD_params_number()} parameters ({getsizeof(self.params) / 1024 ** 2:.5f} MB)")
+        
         self.bp_last_layer = bp_last_layer
         self.bp_lr = bp_learning_rate      
         
+        
+    def get_ABCD_params_number(self, print_layers=False):
+        pms = 0
+        l = 0
+        for layer in self.params:
+            for side in ['in', 'out']:
+                for p in self.params[layer][side]:
+                    if self.params[layer][side][p] != None:
+                        if print_layers:
+                            print(f"{l}_{side} - {p}: {self.params[layer][side][p].shape}")
+                        pms += self.params[layer][side][p].shape[0]
+            l += 1
+        
+        return pms        
+
     def init_ABCD_parameters(self, net: nn.Sequential, start_idx: int = 0, end_idx: int = -1, device: str = 'cpu') -> dict:
         if end_idx == -1 or end_idx > len(net):
             end_idx = len(net)
@@ -62,21 +79,66 @@ class EvolutionStrategy:
         i = start_idx
         while i < end_idx:
             if type(net[i]) == nn.Linear:
-                params[l_index] = {'A':None, 'B': None, 'C':None, 'D': None}
+                params[l_index] = {'in': None, 'out': None}
+                params[l_index]['in'] = {'A':None, 'B': None, 'C':None, 'D': None}
+                params[l_index]['out'] = {'A':None, 'B': None, 'C':None, 'D': None}
                 l_index += 1
             i += 1
-        params[l_index] = {'A':None, 'B': None, 'C':None, 'D': None}
         
+        last_l_index = l_index - 1
         l_index = start_idx
         i = start_idx
+        after_pooling = False
         while i < end_idx:
+            if type(net[i]) in [nn.MaxPool2d, nn.AvgPool2d]:
+                after_pooling = True
             if type(net[i]) == nn.Linear:
                 layer = net[i]
 
-                params[l_index]['A'] = torch.randn(layer.weight.shape[1], device=device)
-                params[l_index + 1]['B'] = torch.randn(layer.weight.shape[0], device=device)
-                params[l_index]['C'] = torch.randn((layer.weight.shape[0], layer.weight.shape[1]), device=device)
-                params[l_index]['D'] = torch.randn((layer.weight.shape[0], layer.weight.shape[1]), device=device)
+                in_shape = layer.weight.shape[1]
+                out_shape = layer.weight.shape[0]
+                
+                # first linear no B in
+                if l_index == 0:
+                    params[l_index]['in']['A'] = torch.randn(in_shape, device=device)
+                    params[l_index]['in']['C'] = torch.randn(in_shape, device=device)
+                    params[l_index]['in']['D'] = torch.randn(in_shape, device=device)
+                    
+                    params[l_index]['out']['A'] = torch.randn(out_shape, device=device)
+                    params[l_index]['out']['B'] = torch.randn(out_shape, device=device)
+                    params[l_index]['out']['C'] = torch.randn(out_shape, device=device)
+                    params[l_index]['out']['D'] = torch.randn(out_shape, device=device)
+                # last linear no A out
+                elif l_index == last_l_index:
+                    if after_pooling:
+                        params[l_index]['in']['A'] = torch.randn(in_shape, device=device)
+                        params[l_index]['in']['C'] = torch.randn(in_shape, device=device)
+                        params[l_index]['in']['D'] = torch.randn(in_shape, device=device)
+                        
+                        params[l_index - 1]['out']['A'] = None # not needed A before pooling as layers do not share neurons
+                        
+                        after_pooling = False
+                        
+                    params[l_index]['out']['B'] = torch.randn(out_shape, device=device)
+                    params[l_index]['out']['C'] = torch.randn(out_shape, device=device)
+                    params[l_index]['out']['D'] = torch.randn(out_shape, device=device)
+                    
+                else:
+                    if after_pooling:
+                        params[l_index]['in']['A'] = torch.randn(in_shape, device=device)
+                        params[l_index]['in']['C'] = torch.randn(in_shape, device=device)
+                        params[l_index]['in']['D'] = torch.randn(in_shape, device=device)
+                        
+                        params[l_index - 1]['out']['A'] = None # not needed A before pooling as layers do not share neurons
+                        
+                        after_pooling = False
+                    
+                    params[l_index]['out']['A'] = torch.randn(out_shape, device=device)
+                    params[l_index]['out']['B'] = torch.randn(out_shape, device=device)
+                    params[l_index]['out']['C'] = torch.randn(out_shape, device=device)
+                    params[l_index]['out']['D'] = torch.randn(out_shape, device=device)
+                    
+                
                 l_index += 1
             i += 1
         
@@ -86,14 +148,11 @@ class EvolutionStrategy:
     def perturbate(self, params):
         new_p = deepcopy(params)
         for layer in new_p:
-            for p in new_p[layer]:
-                if layer == 0 and p == 'B':
-                    continue
-                if layer == list(new_p.keys())[-1] and p != 'B':
-                    continue
-                
-                noise = torch.randn_like(new_p[layer][p])
-                new_p[layer][p].add_(self.perturbation_factor * noise)
+            for side in ['in', 'out']:
+                for p in new_p[layer][side]:
+                    if new_p[layer][side][p] != None:
+                        noise = torch.randn_like(new_p[layer][side][p])
+                        new_p[layer][side][p].add_(self.perturbation_factor * noise)
         
         return new_p
     
@@ -229,15 +288,13 @@ class EvolutionStrategy:
             
             self.update_factor = self.abcd_lr / (self.population_size * self.sigma)
             for layer in population[0].keys():
-                for key in population[0][layer].keys():
-                    if layer == 0 and key == 'B':
-                        continue
-                    if layer == list(population[0].keys())[-1] and key != 'B':
-                        continue
+                for side in population[0][layer].keys():
+                    for key in population[0][layer][side].keys():
+                        if self.params[layer][side][key] != None:
                     
-                    param_pop = np.array([p[layer][key] for p in population])
+                            param_pop = np.array([p[layer][side][key] for p in population])
                     
-                    self.params[layer][key].add_(torch.from_numpy(self.update_factor * np.dot(param_pop.T, ranks).T))
+                            self.params[layer][side][key].add_(torch.from_numpy(self.update_factor * np.dot(param_pop.T, ranks).T))
             
         if self.abcd_lr > 0.001:
             self.abcd_lr *= self.decay
@@ -250,7 +307,7 @@ class EvolutionStrategy:
     
     
     def run(self, iterations):
-        keep_best_only = True
+        keep_best_only = False
         if keep_best_only:
             self.best_total_score = 0
         
