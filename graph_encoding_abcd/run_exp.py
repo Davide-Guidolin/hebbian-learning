@@ -14,6 +14,7 @@ def main():
     parser.add_argument('--population_size', type=int, default=10, help='Size of the population for the es algorithm')
     parser.add_argument('--num_threads', type=int, default=1, help='Number of threads to use, -1 to use all the cpus')
     parser.add_argument('--epochs', type=int, default=10, help='Number of epochs')
+    parser.add_argument('--device', type=str, default='cpu', help='Device to use')
     
     parser.add_argument('--sigma', default=0.1, type=float, help='Sigma used in the ABCD parameters update factor')
     parser.add_argument('--abcd_perturbation_std', default=1, type=float, help='Standard deviation of the gaussian noise used to perturbate the parameters')
@@ -74,7 +75,7 @@ def main():
                                bp_last_layer=args.bp_last_layer,
                                bp_learning_rate=args.bp_learning_rate)
         
-        es.run(iterations=args.epochs)
+        es.run(iterations=args.epochs, device=args.device)
     else:
         sh = SoftHebbTrain(model,
                            dataset_type=dataset,

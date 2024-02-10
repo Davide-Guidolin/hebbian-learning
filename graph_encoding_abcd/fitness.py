@@ -106,7 +106,7 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
     return acc
 
 
-def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.MSELoss, in_size=64):
+def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.MSELoss, in_size=64, device='cuda'):
     print(f"[{os.getpid()}] Starting evaluation of population {pop_index}")
     
     env = gym.make(env_type)
@@ -121,7 +121,7 @@ def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=
     neg_count = 0
     with torch.no_grad():
         while True:
-            x = torch.from_numpy(state.reshape(-1)).unsqueeze(0)
+            x = torch.from_numpy(state.reshape(-1)).unsqueeze(0).to(device)
             
             activation = False
             for l, layer in enumerate(model):
@@ -150,7 +150,7 @@ def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=
                 else:
                     x = layer(x)
             
-            action = np.array([torch.tanh(x[:, 0]).squeeze(), torch.sigmoid(x[:, 1]).squeeze(), torch.sigmoid(x[:, 2]).squeeze()])
+            action = np.array([torch.tanh(x[:, 0]).squeeze().cpu(), torch.sigmoid(x[:, 1]).squeeze().cpu(), torch.sigmoid(x[:, 2]).squeeze().cpu()])
             next_state, reward, done, truncated, info = env.step(action)
             total_rew += reward
             

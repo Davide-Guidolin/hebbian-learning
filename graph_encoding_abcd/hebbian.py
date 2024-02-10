@@ -23,7 +23,7 @@ def abcd(pre, post, a, b, c0, c1, d0, d1):
     d1 = d1.unsqueeze(-1).expand(-1, s3)
     
     d = (d0 * d1).unsqueeze(0).expand(s1, -1, -1)
-    result = torch.zeros(s1, s2, s3).add_(d)
+    result = torch.zeros(s1, s2, s3, device=pre.device).add_(d)
     
     result.addcmul_(a.expand(s1, s2, -1), pre)
 
