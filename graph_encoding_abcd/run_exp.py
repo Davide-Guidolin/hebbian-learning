@@ -27,6 +27,8 @@ def main():
     parser.add_argument('--softhebb', action='store_true', help='Train using Softhebb learning rule. To use only with classification tasks')
     parser.add_argument('--softhebb_lr', default=0.001, type=float, help='Softhebb learning rate if training using Softhebb')
     
+    parser.add_argument('--saving_path', default='./params', type=str, help='Path where ABCD parameters will be saved')
+    
     args = parser.parse_args()
     
     dataset = args.dataset
@@ -52,14 +54,19 @@ def main():
         
         # track hyperparameters and run metadata
         config={
-        "learning_rate": args.abcd_learning_rate,
-        "population_size": args.population_size,
-        "architecture": model,
-        "dataset": dataset,
-        "bp_last_layer": args.bp_last_layer,
-        "bp_learning_rate": args.bp_learning_rate,
-        "epochs": args.epochs,
-        "args": args,
+        'dataset_type': dataset,
+        'population_size': args.population_size,
+        'num_threads': args.num_threads,
+        'sigma':args.sigma,
+        'abcd_learning_rate': args.abcd_learning_rate,
+        'abcd_perturbation_std': args.abcd_perturbation_std,
+        'abcd_lr_decay': args.abcd_lr_decay,
+        'architecture': model,
+        'dataset': dataset,
+        'bp_last_layer': args.bp_last_layer,
+        'bp_learning_rate': args.bp_learning_rate,
+        'epochs': args.epochs,
+        'args': args,
         }
     )
     
@@ -73,7 +80,8 @@ def main():
                                abcd_learning_rate=args.abcd_learning_rate,
                                abcd_lr_decay=args.abcd_lr_decay,
                                bp_last_layer=args.bp_last_layer,
-                               bp_learning_rate=args.bp_learning_rate)
+                               bp_learning_rate=args.bp_learning_rate,
+                               saving_path=args.saving_path)
         
         es.run(iterations=args.epochs, device=args.device)
     else:

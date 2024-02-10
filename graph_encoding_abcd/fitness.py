@@ -106,9 +106,15 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
     return acc
 
 
-def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, bp_loss=nn.MSELoss, in_size=64, device='cuda'):
+def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, in_size=64, device='cuda'):
     print(f"[{os.getpid()}] Starting evaluation of population {pop_index}")
     
+    if device != 'cpu':
+        for layer in model:
+            layer.to(device)
+            if hasattr(layer, 'mask_tensor'):
+                layer.mask_tensor = layer.mask_tensor.to(device)
+                
     env = gym.make(env_type)
     env = w.ResizeObservation(env, in_size)        # Resize and normalize input
     env = CropFrame(env)

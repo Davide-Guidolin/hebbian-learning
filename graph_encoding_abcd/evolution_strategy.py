@@ -4,6 +4,7 @@ import numpy as np
 import torch.multiprocessing as mp
 from copy import deepcopy
 import os, psutil, sys
+import pickle
 
 from unrolled_model import UnrolledModel
 from fitness import evaluate_classification, evaluate_car_racing
@@ -30,7 +31,7 @@ def compute_centered_ranks(x):
   return y
 
 class EvolutionStrategy:
-    def __init__(self, rolled_model, dataset_type="CIFAR10", population_size=100, num_threads=1, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.2, abcd_lr_decay=0.995, bp_last_layer=True, bp_learning_rate=0.01):
+    def __init__(self, rolled_model, dataset_type="CIFAR10", population_size=100, num_threads=1, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.2, abcd_lr_decay=0.995, bp_last_layer=True, bp_learning_rate=0.01, saving_path='./params'):
         self.model = rolled_model
         
         self.population_size = population_size
@@ -53,7 +54,10 @@ class EvolutionStrategy:
         print(f"ABCD parameters initialized: {self.get_ABCD_params_number()} parameters ({sys.getsizeof(self.params) / 1024:.5f} kB)")
         
         self.bp_last_layer = bp_last_layer
-        self.bp_lr = bp_learning_rate      
+        self.bp_lr = bp_learning_rate
+        
+        self.saving_path = saving_path
+        os.makedirs(self.saving_path, exist_ok=True)
         
         
     def get_ABCD_params_number(self, print_layers=False):
@@ -160,9 +164,9 @@ class EvolutionStrategy:
     def pop_to_device(self, p, device):
         for layer in p:
             for side in p[layer]:
-                for p in p[layer][side]:
-                    if p[layer][side][p] != None:
-                        p[layer][side][p] = p[layer][side][p].to(device)
+                for k in p[layer][side]:
+                    if p[layer][side][k] != None:
+                        p[layer][side][k] = p[layer][side][k].to(device)
         
         return p
     
@@ -171,9 +175,9 @@ class EvolutionStrategy:
         p = self.perturbate(self.params)
         if device != 'cpu':
             p = self.pop_to_device(p, device)
-                        
+               
         population.append(p)
-        model = self.unrolled_model.get_new_model().to(device)
+        model = self.unrolled_model.get_new_model()
         shared_dict[pop_evaluated] = None
         if self.dataset_type != "CarRacing-v2":
             loader = self.data.get_new_loader(train=True)
@@ -235,11 +239,7 @@ class EvolutionStrategy:
             
             for proc in processes:
                 proc.join()
-                proc.close()
-                
-            if device != 'cpu':
-                for i, p in enumerate(population):
-                    population[i] = self.pop_to_device(p, 'cpu')                    
+                proc.close()     
             
             if keep_best_only:
                 print(f"MEM Before pop selection: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
@@ -260,20 +260,24 @@ class EvolutionStrategy:
             print("No Parallel")
             scores = []
             for pop_idx in range(self.population_size):
-                print(f"MEM BEFORE population {pop_idx} creation: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
                 p = self.perturbate(self.params)
-                print(f"MEM AFTER population {pop_idx} creation: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
+                if device != 'cpu':
+                    p = self.pop_to_device(p, device)
                 population.append(p)
                 if self.dataset_type != "CarRacing-v2":
                     scores.append(evaluate_classification(self.unrolled_model.get_new_model(), self.data.test_loader, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
                 else:
-                    scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, in_size=self.input_size))
+                    scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, in_size=self.input_size, device=device))
                 
                 if keep_best_only:
                     if scores[-1] > best_score:
                         best_score = scores[-1]
                         best_pop = population[-1]
                         population[-1] = None
+                        
+        if device != 'cpu':
+            for i, p in enumerate(population):
+                population[i] = self.pop_to_device(p, 'cpu')               
         
         if keep_best_only:
             return best_pop, best_score
@@ -323,6 +327,13 @@ class EvolutionStrategy:
         print("Parameters update done")
     
     
+    def save_params(self, iteration=0, best_score=0, avg_score=0):
+        filename = os.path.join(self.saving_path, f'{self.dataset_type}_{self.population_size}_{self.abcd_lr}_{self.decay}_{self.perturbation_factor}_{self.sigma}_{self.bp_last_layer}_{self.bp_lr}_{iteration}_{best_score:.2f}_{avg_score:.2f}.pickle')
+        
+        with open(filename, 'wb') as f:
+            pickle.dump(self.params, f, protocol=pickle.HIGHEST_PROTOCOL)
+                        
+    
     def run(self, iterations, device='cpu'):
         keep_best_only = False
         if keep_best_only:
@@ -336,17 +347,21 @@ class EvolutionStrategy:
                 print(f"For parallel execution run this command: export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1")
                 exit(0)
             mp.set_start_method('spawn')
+            mp.set_sharing_strategy('file_system')
         
         best_scores = []
         for iteration in range(iterations):
             print(f"Iter [{iteration}/{iterations}]")
             population, scores = self.get_scores(parallel=parallel, keep_best_only=keep_best_only, device=device)
             if not keep_best_only:
-                print(f"Best score: {np.amax(scores)}")
-                print(f"Avg score: {np.mean(scores)}")
-                wandb.log({"best reward": np.amax(scores), "avg reward": np.mean(scores), "scores": scores}, step=iteration)
-                best_scores.append(np.amax(scores))
+                best_score = np.amax(scores)
+                avg_score = np.mean(scores)
+                print(f"Best score: {best_score}")
+                print(f"Avg score: {avg_score}")
+                wandb.log({"best reward": best_score, "avg reward": avg_score, "scores": scores}, step=iteration)
+                best_scores.append(best_score)
                 self.update_params(population, scores, keep_best_only=keep_best_only)
+                self.save_params(iteration, best_score, avg_score)
                 del population
             else:
                 best_pop = population
