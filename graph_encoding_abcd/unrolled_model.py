@@ -112,6 +112,11 @@ class UnrolledModel:
 
         layers = []
         last_feat = 0
+        # Save first dimension in case first layer is BatchNorm
+        for d in graph.bdim:
+            if d[0] != None:
+                last_feat = d[0]
+                break
         last_ch = 0
         layer_idx = 0
         for idx_layer in range(0, len(graph.layers)):

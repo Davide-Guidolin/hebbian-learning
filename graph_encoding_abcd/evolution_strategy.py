@@ -31,7 +31,21 @@ def compute_centered_ranks(x):
   return y
 
 class EvolutionStrategy:
-    def __init__(self, rolled_model, dataset_type="CIFAR10", population_size=100, num_threads=1, sigma=0.1, abcd_perturbation_std=1, abcd_learning_rate=0.2, abcd_lr_decay=0.995, bp_last_layer=True, bp_learning_rate=0.01, saving_path='./params'):
+    def __init__(self, 
+                 rolled_model, 
+                 dataset_type="CIFAR10", 
+                 population_size=100,
+                 num_threads=1,
+                 sigma=0.1,
+                 abcd_perturbation_std=1,
+                 abcd_learning_rate=0.2,
+                 abcd_lr_decay=0.995,
+                 bp_last_layer=True,
+                 bp_learning_rate=0.01,
+                 saving_path=None,
+                 resume_file=None
+                ):
+        
         self.model = rolled_model
         
         self.population_size = population_size
@@ -50,8 +64,6 @@ class EvolutionStrategy:
         
         self.unrolled_model = UnrolledModel(self.model, self.input_size)
         self.params = self.init_ABCD_parameters(self.unrolled_model.get_new_model())
-        
-        print(f"ABCD parameters initialized: {self.get_ABCD_params_number()} parameters ({sys.getsizeof(self.params) / 1024:.5f} kB)")
         
         self.bp_last_layer = bp_last_layer
         self.bp_lr = bp_learning_rate
@@ -181,7 +193,7 @@ class EvolutionStrategy:
         shared_dict[pop_evaluated] = None
         if self.dataset_type != "CarRacing-v2":
             loader = self.data.get_new_loader(train=True)
-            args = (model, loader, p, pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr)
+            args = (model, loader, p, pop_evaluated, shared_dict, device, self.abcd_lr, self.bp_last_layer, self.bp_lr)
             target_fn = evaluate_classification
         else:
             args = (model, self.dataset_type, p, pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr, self.input_size, device)
@@ -265,7 +277,7 @@ class EvolutionStrategy:
                     p = self.pop_to_device(p, device)
                 population.append(p)
                 if self.dataset_type != "CarRacing-v2":
-                    scores.append(evaluate_classification(self.unrolled_model.get_new_model(), self.data.test_loader, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr))
+                    scores.append(evaluate_classification(self.unrolled_model.get_new_model(), self.data.test_loader, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, device=device))
                 else:
                     scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, p, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, in_size=self.input_size, device=device))
                 
@@ -361,7 +373,8 @@ class EvolutionStrategy:
                 wandb.log({"best reward": best_score, "avg reward": avg_score, "scores": scores}, step=iteration)
                 best_scores.append(best_score)
                 self.update_params(population, scores, keep_best_only=keep_best_only)
-                self.save_params(iteration, best_score, avg_score)
+                if self.saving_path:
+                    self.save_params(iteration, best_score, avg_score)
                 del population
             else:
                 best_pop = population

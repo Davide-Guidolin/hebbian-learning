@@ -1,4 +1,6 @@
 import torch.nn as nn
+import torch.nn.functional as F
+import torch
 
 class OneConv(nn.Module):
     def __init__(self):
@@ -63,43 +65,61 @@ class CNNModel(nn.Module):
 
         return x
     
+# Triangle activation used in SoftHebb    
+class Triangle(nn.Module):
+    def __init__(self, power: float = 1, inplace: bool = True):
+        super(Triangle, self).__init__()
+        self.inplace = inplace
+        self.power = power
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        input = input - torch.mean(input.data, axis=1, keepdims=True)
+        return F.relu(input, inplace=self.inplace) ** self.power
+
     
 def get_out_size(dim, k_size, stride = 1, padding = 0, pooling_size = 1):
     return int(((dim - k_size + 2*padding)/stride + 1)/pooling_size)
 
+#https://www.quora.com/What-percentage-has-been-reached-on-CIFAR-10-using-only-a-multi-layer-perceptron
 class BaseNet(nn.Module):
     def __init__(self):
         super(BaseNet, self).__init__()
         
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=96, kernel_size=5)
+        self.bn1 = nn.BatchNorm2d(3)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=5)
+        self.activ1 = Triangle(power=0.7)
         self.max_pool1 = nn.MaxPool2d(4, 2, 1)
-        self.bn1 = nn.BatchNorm2d(96)
         out_size = get_out_size(32, 5, pooling_size=2)
         
-        self.conv2 = nn.Conv2d(in_channels=96, out_channels=384, kernel_size=3)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=128, kernel_size=3)
+        self.activ2 = Triangle(power=1.4)
         self.max_pool2 = nn.MaxPool2d(4, 2, 1)
-        self.bn2 = nn.BatchNorm2d(384)
         out_size = get_out_size(out_size, 3, pooling_size=2)
         
-        self.conv3 = nn.Conv2d(in_channels=384, out_channels=1536, kernel_size=3)
+        self.bn3 = nn.BatchNorm2d(128)
+        self.conv3 = nn.Conv2d(in_channels=128, out_channels=512, kernel_size=3)
+        self.activ3 = Triangle(power=1.)
         self.avg_pool3 = nn.AvgPool2d(2, 2, 0)
-        self.bn3 = nn.BatchNorm2d(1536)
         out_size = get_out_size(out_size, 3, pooling_size=2)
 
-        self.fc4 = nn.Linear(out_size*out_size*1536, 10)
+        self.fc4 = nn.Linear(out_size*out_size*512, 10)        
         
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.max_pool1(x)
         x = self.bn1(x)
+        x = self.conv1(x)
+        x = self.activ1(x)
+        x = self.max_pool1(x)
         
-        x = self.conv2(x)
-        x = self.max_pool2(x)
         x = self.bn2(x)
+        x = self.conv2(x)
+        x = self.activ2(x)
+        x = self.max_pool2(x)
         
-        x = self.conv3(x)
-        x = self.avg_pool3(x)
         x = self.bn3(x)
+        x = self.conv3(x)
+        x = self.activ3(x)
+        x = self.avg_pool3(x)
 
         x = self.fc4(x.view(x.shape[0], -1))
 
@@ -156,7 +176,7 @@ class CNN_CarRacing(nn.Module):
         super(CNN_CarRacing, self).__init__()
         
         self.conv1 = nn.Conv2d(in_channels=3, out_channels=6, kernel_size=3, stride=1, bias=False)
-        self.tanh1 = nn.Tanh() 
+        self.tanh1 = nn.Tanh()
         self.pool1 = nn.MaxPool2d(2, 2)
         
         self.conv2 = nn.Conv2d(in_channels=6, out_channels=8, kernel_size=5, stride=2, bias=False)

@@ -14,6 +14,7 @@ def abcd(pre, post, a, b, c0, c1, d0, d1):
     s2 = post.shape[-1] # out_shape
     s3 = pre.shape[-1] # in_shape
 
+    # expand variables to have size batch_size x out_shape x in_shape
     pre = pre.unsqueeze(1).expand(-1, s2, -1)
     c0 = c0.unsqueeze(0).unsqueeze(1).expand(-1, s2, -1)
     d0 = d0.unsqueeze(0).expand(s2, -1)
@@ -22,13 +23,19 @@ def abcd(pre, post, a, b, c0, c1, d0, d1):
     c1 = c1.unsqueeze(0).unsqueeze(-1).expand(-1, -1, s3)
     d1 = d1.unsqueeze(-1).expand(-1, s3)
     
+    # calculate d = d0 * d1
     d = (d0 * d1).unsqueeze(0).expand(s1, -1, -1)
+    
+    # start from zeros and add d
     result = torch.zeros(s1, s2, s3, device=pre.device).add_(d)
     
+    # add a * pre
     result.addcmul_(a.expand(s1, s2, -1), pre)
 
+    # add b * post
     result.addcmul_(b.unsqueeze(-1).expand(s1, -1, s3), post)
 
+    # add c0 * c1 * pre * post
     result.addcmul_(c0 * c1, pre * post)
 
     return torch.mean(result, dim=0)
@@ -72,15 +79,15 @@ def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False)
         D1 = ABCD_params[layer.idx]['out']['D']
 
     w_matrix = abcd(input, output, A, B, C0, C1, D0, D1)
-    
+
     if hasattr(layer, 'mask_tensor'):
         w_matrix.mul_(layer.mask_tensor.t())
-    
+
     if shared_w:
         w_matrix = shared_weights(layer, w_matrix)
 
     w_matrix = w_matrix / w_matrix.abs().max()
-    
+
     layer.weight = nn.Parameter(lr * w_matrix, requires_grad=False)
     
 

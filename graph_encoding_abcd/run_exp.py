@@ -2,12 +2,15 @@ from model import *
 from evolution_strategy import EvolutionStrategy
 from softhebb_train import SoftHebbTrain
 import argparse
+import torch
 
 import wandb
 # python3 run_exp.py --dataset CarRacing --population_size 4 --num_threads 1 --epochs 30
 # python3 run_exp.py --dataset CIFAR10 --population_size 4 --num_threads 1 --epochs 30
 
 def main():
+    torch.set_float32_matmul_precision('high')
+    
     parser = argparse.ArgumentParser()
     
     parser.add_argument('--dataset', choices=['CIFAR10', 'CIFAR100', 'CarRacing', 'CarRacing-v2'], help='Dataset to use', default='CIFAR10')
@@ -22,12 +25,15 @@ def main():
     parser.add_argument('--abcd_lr_decay', default=0.995, type=float, help='Decay factor for abcd_learning_rate')
     
     parser.add_argument('--bp_last_layer', action='store_true', help='Use backpropagation in the last layer')
-    parser.add_argument('--bp_learning_rate', default=0.01, type=float, help='Learning rate to use for backpropagation')
+    parser.add_argument('--bp_lr', default=0.001, type=float, help='Learning rate to use for backpropagation')
+    parser.add_argument('--bp', action='store_true', help='Train the full network using backpropagation. Only implemented for training with --softhebb for now')
     
     parser.add_argument('--softhebb', action='store_true', help='Train using Softhebb learning rule. To use only with classification tasks')
-    parser.add_argument('--softhebb_lr', default=0.001, type=float, help='Softhebb learning rate if training using Softhebb')
+    parser.add_argument('--softhebb_lr', default=0.005, type=float, help='Softhebb learning rate if training using Softhebb')
     
     parser.add_argument('--saving_path', default='./params', type=str, help='Path where ABCD parameters will be saved')
+    
+    parser.add_argument('--resume_file', default=None, type=str, help='Path to the file')
     
     args = parser.parse_args()
     
@@ -35,16 +41,18 @@ def main():
     if dataset == 'CarRacing':
         dataset = 'CarRacing-v2'
     
-    device = 'cpu'
     if dataset == 'CarRacing-v2':
         model = CNN_CarRacing()
     else:
-        model = BaseNet2()
+        model = BaseNet()
         
     if dataset == "CarRacing-v2":
         project = "CarRacing_conv_unrolling_abcd"
     elif args.softhebb:
-        project = "CIFAR-Softhebb"
+        if args.bp:
+            project = "Backprop"
+        else:
+            project = "CIFAR-Softhebb"
     else:
         project = "CIFAR-ABCD"
     
@@ -64,13 +72,15 @@ def main():
         'architecture': model,
         'dataset': dataset,
         'bp_last_layer': args.bp_last_layer,
-        'bp_learning_rate': args.bp_learning_rate,
+        'bp_lr': args.bp_lr,
+        'softhebb': args.softhebb,
+        'softhebb_lr': args.softhebb_lr,
         'epochs': args.epochs,
         'args': args,
         }
     )
     
-    if dataset == 'CarRacing-v2':
+    if not args.softhebb:
         es = EvolutionStrategy(model,
                                dataset_type=dataset,
                                population_size=args.population_size,
@@ -80,18 +90,24 @@ def main():
                                abcd_learning_rate=args.abcd_learning_rate,
                                abcd_lr_decay=args.abcd_lr_decay,
                                bp_last_layer=args.bp_last_layer,
-                               bp_learning_rate=args.bp_learning_rate,
+                               bp_learning_rate=args.bp_lr,
                                saving_path=args.saving_path)
         
         es.run(iterations=args.epochs, device=args.device)
     else:
+        if dataset == "CarRacing-v2":
+            print("Softhebb training not implemented for CarRacing")
+            exit(0)
         sh = SoftHebbTrain(model,
                            dataset_type=dataset,
                            bp_last_layer=args.bp_last_layer,
-                           bp_learning_rate=args.bp_learning_rate,
+                           bp_learning_rate=args.bp_lr,
                            softhebb_lr=args.softhebb_lr)
         
-        sh.train(n_epochs=args.epochs)
+        if args.bp:
+            sh.train_backprop(n_epochs=args.epochs, device=args.device)
+        else:
+            sh.train(n_epochs=args.epochs, device=args.device)
     
     
 if __name__ == "__main__":
