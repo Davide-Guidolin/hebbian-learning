@@ -8,7 +8,7 @@ import os, psutil
 # ~ 741 ms no compiled
 # ~ 57 ms compiled
 @torch.compile()
-def abcd(pre, post, a, b, c0, c1, d0, d1):
+def abcd(pre, post, a, b, c0, c1, d0, d1): # not used
     
     s1 = pre.shape[0] # batch size
     s2 = post.shape[-1] # out_shape
@@ -40,6 +40,13 @@ def abcd(pre, post, a, b, c0, c1, d0, d1):
 
     return torch.mean(result, dim=0)
 
+@torch.compile()
+def dw(w_in, w_out, A_pre, B_post, C_pre_post, D, lr, agg_func):
+    return (agg_func(A_pre[:, w_in]) +
+            agg_func(B_post[:, w_out]) +
+            agg_func(C_pre_post[:, w_out, w_in]) +
+            agg_func(D[w_out, w_in]) 
+        ) * agg_func(lr[w_out, w_in])
 
 def shared_weights_abcd(layer, pre, post, a, b, c0, c1, d0, d1, lr_in, lr_out, agg_func=torch.max):
     s1 = pre.shape[0] # batch size
@@ -73,16 +80,7 @@ def shared_weights_abcd(layer, pre, post, a, b, c0, c1, d0, d1, lr_in, lr_out, a
                 w_in = layer.shared_weights[i][o][k][0]
                 w_out = layer.shared_weights[i][o][k][1]
                 
-                dw = torch.zeros(s1, device=pre.device)
-                
-                dw.add_(agg_func(A_pre[:, w_in]))
-                dw.add_(agg_func(B_post[:, w_out]))
-                dw.add_(agg_func(C_pre_post[:, w_out, w_in]))
-                dw.add_(agg_func(D[w_out, w_in]))
-                
-                dw.mul_(agg_func(lr[w_out, w_in]))
-                
-                result[w_out, w_in] = dw.mean(dim=0)
+                result[w_out, w_in] = dw(w_in, w_out, A_pre, B_post, C_pre_post, D, lr, agg_func).mean(dim=0)
 
     return result
 
