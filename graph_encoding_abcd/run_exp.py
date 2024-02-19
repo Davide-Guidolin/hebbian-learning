@@ -47,7 +47,7 @@ def main():
         model = BaseNet()
         
     if dataset == "CarRacing-v2":
-        project = "CarRacing_conv_unrolling_abcd"
+        project = "CarRacing_abcd_ws"
     elif args.softhebb:
         if args.bp:
             project = "Backprop"

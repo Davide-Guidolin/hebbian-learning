@@ -41,6 +41,8 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
             layer.to(device)
             if hasattr(layer, 'mask_tensor'):
                 layer.mask_tensor = layer.mask_tensor.to(device)
+            if hasattr(layer, 'shared_weights'):
+                layer.shared_weights = layer.shared_weights.to(device)
 
     if bp_last_layer:
         model[-1].weight.requires_grad = True
@@ -121,6 +123,8 @@ def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=
             layer.to(device)
             if hasattr(layer, 'mask_tensor'):
                 layer.mask_tensor = layer.mask_tensor.to(device)
+            if hasattr(layer, 'shared_weights'):
+                layer.shared_weights = layer.shared_weights.to(device)
 
     env = gym.make(env_type)
     env = w.ResizeObservation(env, in_size)        # Resize and normalize input
@@ -154,8 +158,8 @@ def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=
                         exit(1)
                     
                     shared_w = False
-                    # if hasattr(layer, 'shared_weights'):
-                    #     shared_w = True
+                    if hasattr(layer, 'shared_weights'):
+                        shared_w = True
                     
                     update_weights(layer, x, y, abcd_params, shared_w=shared_w, lr=abcd_learning_rate)
                     

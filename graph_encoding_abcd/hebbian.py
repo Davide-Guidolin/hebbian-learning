@@ -41,27 +41,53 @@ def abcd(pre, post, a, b, c0, c1, d0, d1):
     return torch.mean(result, dim=0)
 
 
-def shared_weights(layer, w_matrix):
-    in_ch = len(list(layer.shared_weights.keys()))
-    out_ch = len(list(layer.shared_weights[0].keys()))
-    k_size = len(list(layer.shared_weights[0][0].keys()))
+def shared_weights_abcd(layer, pre, post, a, b, c0, c1, d0, d1, lr_in, lr_out, agg_func=torch.max):
+    s1 = pre.shape[0] # batch size
+    s2 = post.shape[-1] # out_shape
+    s3 = pre.shape[-1] # in_shape
+
+    c0 = c0.unsqueeze(0).unsqueeze(1).expand(s1, s2, -1)
+    d0 = d0.unsqueeze(0).expand(s2, -1)
+    lr_in = lr_in.unsqueeze(0).expand(s2, -1)
+
+    c1 = c1.unsqueeze(0).unsqueeze(-1).expand(s1, -1, s3)
+    d1 = d1.unsqueeze(-1).expand(-1, s3)
+    lr_out = lr_out.unsqueeze(-1).expand(-1, s3)
     
-    w_copy = w_matrix.clone()
+    
+    result = torch.zeros(s2, s3, device=pre.device)
+    
+    in_ch = layer.shared_weights.shape[0]
+    out_ch = layer.shared_weights.shape[1]
+    k_size = layer.shared_weights.shape[2]
+
+    A_pre = a.unsqueeze(0).expand(s1, -1)*pre
+    B_post = b*post
+    C_pre_post = c0 * c1 * pre.unsqueeze(1).expand(-1, s2, -1) * post.unsqueeze(-1).expand(-1, -1, s3)
+    D = d0 * d1
+    lr = (lr_in + lr_out).div_(2)
+        
     for i in range(in_ch):
         for o in range(out_ch):
-            for k in range(k_size):
-                sw = layer.shared_weights[i][o][k]
+            for k in range(k_size):       
+                w_in = layer.shared_weights[i][o][k][0]
+                w_out = layer.shared_weights[i][o][k][1]
                 
-                w_in, w_out = zip(*sw)
+                dw = torch.zeros(s1, device=pre.device)
                 
-                w_values = w_matrix[w_out, w_in]
-                m = torch.mean(w_values)
-                w_copy[w_out, w_in] = m
+                dw.add_(agg_func(A_pre[:, w_in]))
+                dw.add_(agg_func(B_post[:, w_out]))
+                dw.add_(agg_func(C_pre_post[:, w_out, w_in]))
+                dw.add_(agg_func(D[w_out, w_in]))
                 
-    return w_copy
+                dw.mul_(agg_func(lr[w_out, w_in]))
+                
+                result[w_out, w_in] = dw.mean(dim=0)
+
+    return result
 
 
-def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False):
+def update_weights(layer, pre, post, ABCD_params, lr=0.0001, shared_w=False):
 
     if ABCD_params[layer.idx]['in']['C'] == None: # ABCD schared with previous layer
         A = ABCD_params[layer.idx - 1]['out']['A']
@@ -77,18 +103,21 @@ def update_weights(layer, input, output, ABCD_params, lr=0.0001, shared_w=False)
         C1 = ABCD_params[layer.idx]['out']['C']
         D0 = ABCD_params[layer.idx]['in']['D']
         D1 = ABCD_params[layer.idx]['out']['D']
-
-    w_matrix = abcd(input, output, A, B, C0, C1, D0, D1)
+        
+    lr_in = ABCD_params[layer.idx]['in']['lr']
+    lr_out = ABCD_params[layer.idx]['out']['lr']
+    
+    if shared_w:
+        w_matrix = shared_weights_abcd(layer, pre, post, A, B, C0, C1, D0, D1, lr_in, lr_out, agg_func=torch.min)
+    else:
+        w_matrix = abcd(pre, post, A, B, C0, C1, D0, D1)
 
     if hasattr(layer, 'mask_tensor'):
         w_matrix.mul_(layer.mask_tensor.t())
 
-    if shared_w:
-        w_matrix = shared_weights(layer, w_matrix)
-
     w_matrix = w_matrix / w_matrix.abs().max()
 
-    layer.weight = nn.Parameter(lr * w_matrix, requires_grad=False)
+    layer.weight = nn.Parameter(w_matrix, requires_grad=False)
     
 
 @torch.compile()
@@ -120,7 +149,7 @@ def softhebb_update(layer, x, pre_act, lr=0.0001, shared_w=False):
     if hasattr(layer, 'mask_tensor'):
         w_matrix.mul_(layer.mask_tensor.t())
     
-    if shared_w:
-        w_matrix = shared_weights(layer, w_matrix)
+    # if shared_w:
+    #     w_matrix = shared_weights(layer, w_matrix)
 
     layer.weight = nn.Parameter(w_matrix, requires_grad=False)

@@ -34,34 +34,7 @@ class UnrolledModel:
         print("Reduce adj matrix")
         adj_m = adj_m[:in_feat, in_feat:]
         print("Adj matrix shape: ", adj_m.shape)
-        
-        print("Save shared weights indexes")
-        shared_w = {}
-        for i in range(in_ch):
-            shared_w[i] = {}
-            for o in range(out_ch):
-                shared_w[i][o] = {}
-                for k in range(k_size):
-                    shared_w[i][o][k] = []
-                    
-        indices = np.split(adj_m.indices, adj_m.indptr[1:-1])
-        
-        out_ch_step = int(adj_m.shape[1]/out_ch)
-        
-        out_ch_count = 0
-        for out_n in range(adj_m.shape[1]):
-            if out_n == out_ch_step*(out_ch_count+1):
-                out_ch_count += 1
                 
-            in_ch_count = 0
-            k = 0
-            for in_n in indices[out_n]:
-                shared_w[in_ch_count][out_ch_count][k].append((in_n, out_n))
-                k += 1
-                if k == k_size:
-                    k = 0
-                    in_ch_count += 1
-        
         print(f"MEM BEFORE LINEAR: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
 
         print(f"Linear ({in_feat} -> {out_feat})")
@@ -81,7 +54,6 @@ class UnrolledModel:
         print(f"MEM BEFORE coo: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
         coo_m = adj_m.tocoo()
         
-        del adj_m
         # Create a sparse tensor from the COO matrix with values as 1
         
         print(f"MEM BEFORE mask_t: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
@@ -97,10 +69,45 @@ class UnrolledModel:
         
         print(f"MEM after mask_t: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
         print("Multiply weights")
-        print("NON ZERO params", torch.count_nonzero(mask_tensor.to_dense()))
+        non_zero_params = torch.count_nonzero(mask_tensor.to_dense())
+        print("NON ZERO params", non_zero_params)
         layer.weight.data.mul_(mask_tensor.t())
         
         layer.mask_tensor = mask_tensor.to_dense()
+        
+        print("Save shared weights indexes")
+        n_shared = int(non_zero_params.item()/(in_ch * out_ch * k_size))
+
+        shared_w = torch.zeros(in_ch, out_ch, k_size, 2, n_shared, dtype=torch.int32)
+        # counter used to track the number of shared weights
+        counters = torch.zeros(in_ch, out_ch, k_size, dtype=torch.int16)
+                    
+        indices = np.split(adj_m.indices, adj_m.indptr[1:-1])
+        
+        out_ch_step = int(adj_m.shape[1]/out_ch)
+        
+        out_ch_count = 0
+        # iterate through columns
+        for out_n in range(adj_m.shape[1]):
+            # every out_ch_step change out channel
+            if out_n == out_ch_step*(out_ch_count+1):
+                out_ch_count += 1
+                
+            in_ch_count = 0
+            k = 0
+            # iterate through rows
+            for in_n in indices[out_n]:
+                c = counters[in_ch_count][out_ch_count][k].item()
+                shared_w[in_ch_count][out_ch_count][k][0][c] = in_n
+                shared_w[in_ch_count][out_ch_count][k][1][c] = out_n
+                counters[in_ch_count][out_ch_count][k].add_(1)
+                
+                k += 1
+                # every k_size change in channel and reset kernel to 0
+                if k == k_size:
+                    k = 0
+                    in_ch_count += 1
+
         layer.shared_weights = shared_w
         
         return layer
