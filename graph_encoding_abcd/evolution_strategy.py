@@ -64,9 +64,9 @@ class EvolutionStrategy:
         
         self.unrolled_model = UnrolledModel(self.model, self.input_size)
         
-        new_m = self.unrolled_model.get_new_model()
-        print(new_m)
-        self.params = self.init_ABCD_parameters(new_m)
+        self.unrolled_model_type = self.unrolled_model.get_new_model()
+        print(self.unrolled_model_type)
+        self.params = self.init_ABCD_parameters(self.unrolled_model_type)
         print(f"ABCD Params: {self.get_ABCD_params_number()}")
         
         self.bp_last_layer = bp_last_layer
@@ -177,7 +177,7 @@ class EvolutionStrategy:
     def init_population(self):
         pop = []
         for i in range(self.population_size):
-            pop.append(self.init_ABCD_parameters(self.unrolled_model.get_new_model()))
+            pop.append(self.init_ABCD_parameters(self.unrolled_model_type))
             
         return pop
     
@@ -195,11 +195,16 @@ class EvolutionStrategy:
     
     
     def pop_to_device(self, p, device):
+        if device == 'cuda':
+            dtype = torch.float16
+        else:
+            dtype = torch.float32
+            
         for layer in p:
             for side in p[layer]:
                 for k in p[layer][side]:
                     if p[layer][side][k] != None:
-                        p[layer][side][k] = p[layer][side][k].to(device)
+                        p[layer][side][k] = p[layer][side][k].to(device).to(dtype)
         
         return p
     

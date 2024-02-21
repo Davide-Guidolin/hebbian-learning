@@ -119,10 +119,15 @@ def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=
     print(f"[{os.getpid()}] Starting evaluation of population {pop_index}")
     
     if device != 'cpu':
+        dtype = torch.float16
+    else:
+        dtype = torch.float32
+    
+    if device != 'cpu':
         for layer in model:
-            layer.to(device)
+            layer.to(device).to(dtype)
             if hasattr(layer, 'mask_tensor'):
-                layer.mask_tensor = layer.mask_tensor.to(device)
+                layer.mask_tensor = layer.mask_tensor.to(device).to(dtype)
             if hasattr(layer, 'shared_weights'):
                 layer.shared_weights = layer.shared_weights.to(device)
 
@@ -135,10 +140,10 @@ def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=
     state = np.swapaxes(state,0,2)
     
     total_rew = 0
-    neg_count = 0
+    neg_count = 0        
     with torch.no_grad():
         while True:
-            x = torch.from_numpy(state.reshape(-1)).unsqueeze(0).to(device)
+            x = torch.from_numpy(state).reshape(-1).unsqueeze(0).to(device).to(dtype)
                 
             activation = False
             for l, layer in enumerate(model):
@@ -166,7 +171,8 @@ def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=
                     x = y
                 else:
                     x = layer(x)
-                    
+
+            x = x.to(torch.float32)
             action = np.array([torch.tanh(x[:, 0]).squeeze().cpu(), torch.sigmoid(x[:, 1]).squeeze().cpu(), torch.sigmoid(x[:, 2]).squeeze().cpu()])
             next_state, reward, done, truncated, info = env.step(action)
             total_rew += reward

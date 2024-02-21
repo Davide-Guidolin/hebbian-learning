@@ -78,7 +78,7 @@ class UnrolledModel:
         print("Save shared weights indexes")
         n_shared = int(non_zero_params.item()/(in_ch * out_ch * k_size))
 
-        shared_w = torch.zeros(in_ch, out_ch, k_size, 2, n_shared, dtype=torch.int32)
+        shared_w = torch.zeros(in_ch, out_ch, k_size, 2, n_shared, dtype=torch.int64)
         # counter used to track the number of shared weights
         counters = torch.zeros(in_ch, out_ch, k_size, dtype=torch.int16)
                     
