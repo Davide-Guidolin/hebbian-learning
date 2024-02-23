@@ -257,40 +257,12 @@ class EvolutionStrategy:
                 else:
                     processes[processes_joined].join()
                     processes_joined += 1
-                    thread_used -= 1
-                    
-                    # if keep_best_only:
-                    #     print(f"MEM Before pop selection: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
-                    #     for pop, score in shared_dict.items():
-                    #         if score != None:
-                    #             if score > best_score:
-                    #                 print(f"New best score found: pop {pop} score {score}")
-                    #                 best_score = score
-                    #                 best_pop = population[pop]
-                    #                 del shared_dict[pop]
-                                
-                    #             population[pop] = None
-                                
-                        # print(f"MEM After pop selection: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
-                        
+                    thread_used -= 1                       
             
             for proc in processes:
                 proc.join()
                 proc.close()     
             
-            # if keep_best_only:
-            #     print(f"MEM Before pop selection: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")
-            #     for pop, score in shared_dict.items():
-            #         if score != None:
-            #             if score > best_score:
-            #                 print(f"New best score found: pop {pop} score {score}")
-            #                 best_score = score
-            #                 best_pop = population[pop]
-            #                 del shared_dict[pop]
-                            
-            #             population[pop] = None
-            #     print(f"MEM After pop selection: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2:.2f} MB")       
-            # else:
             scores = list(dict(sorted(shared_dict.items(), key=lambda x: x[0])).values())
             
         else:
@@ -307,40 +279,12 @@ class EvolutionStrategy:
                 else:
                     scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, pop, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, in_size=self.input_size, device=device))
                 
-                # if keep_best_only:
-                #     if scores[-1] > best_score:
-                #         best_score = scores[-1]
-                #         best_pop = population[-1]
-                #         population[-1] = None
-                        
-        # if device != 'cpu':
-        #     for i, p in enumerate(population):
-        #         population[i] = self.pop_to_device(p, 'cpu')               
-        
-        # if keep_best_only:
-        #     return best_pop, best_score
-        # else:
         scores = np.array(scores)
         return scores    
     
     
     def update_params(self, population, scores, keep_best_only=False):
         
-        # if keep_best_only:
-        #     if scores > self.best_total_score:
-        #         up_pct = 0.8
-        #     else:
-        #         up_pct = 0.6
-                
-        #     for layer in population.keys():
-        #         for key in population[layer].keys():
-        #             if layer == 0 and key == 'B':
-        #                 continue
-        #             if layer == list(population.keys())[-1] and key != 'B':
-        #                 continue
-                    
-        #             self.params[layer][key] = self.params[layer][key] * (1-up_pct) + population[layer][key] * up_pct
-        # else:
         ranks = compute_centered_ranks(scores)
         
         ranks = (ranks - ranks.mean()) / ranks.std()
@@ -390,28 +334,21 @@ class EvolutionStrategy:
         best_scores = []
         for iteration in range(iterations):
             print(f"Iter [{iteration}/{iterations}]")
+            
             population = self.init_population()
             scores = self.get_scores(population=population, parallel=parallel, keep_best_only=keep_best_only, device=device)
-            # if not keep_best_only:
+            
             best_score = np.amax(scores)
             avg_score = np.mean(scores)
             print(f"Best score: {best_score}")
             print(f"Avg score: {avg_score}")
             wandb.log({"best reward": best_score, "avg reward": avg_score, "scores": scores}, step=iteration)
             best_scores.append(best_score)
+            
             self.update_params(population, scores, keep_best_only=keep_best_only)
             if self.saving_path:
                 self.save_params(iteration, best_score, avg_score)
-                
-            # else:
-            #     best_pop = population
-            #     best_score = scores
-            #     print(f"Best score: {best_score}")
-            #     wandb.log({"best reward": best_score}, step=iteration)
-            #     best_scores.append(best_score)
-            #     self.update_params(best_pop, best_score, keep_best_only=keep_best_only)
-            #     del best_pop
-        
+
         for iteration in range(iterations):
             print(f"Best accuracy [{iteration}/{iterations}]: {best_scores[iteration]}")
     

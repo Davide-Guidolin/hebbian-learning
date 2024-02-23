@@ -83,16 +83,14 @@ def shared_weights_abcd_fast(layer, pre, post, a, b, c0, c1, d0, d1, lr_in, lr_o
     D = d0 * d1
     lr = (lr_in + lr_out).div_(2)
 
-    
-    with record_function('for_loop'):
-        for i in range(in_ch):
-            for o in range(out_ch):
-                w_in = layer.shared_weights[i, o, :, 0]
-                w_out = layer.shared_weights[i, o, :, 1]
-                
-                delta_w = dw_fast(w_in, w_out, A_pre, B_post, C_pre_post, D, lr, agg_func)
-                
-                result[w_out[:], w_in[:]] = delta_w.mean(axis=0)[:].unsqueeze(-1).expand(-1, w_in.shape[-1])
+    for i in range(in_ch):
+        for o in range(out_ch):
+            w_in = layer.shared_weights[i, o, :, 0]
+            w_out = layer.shared_weights[i, o, :, 1]
+            
+            delta_w = dw_fast(w_in, w_out, A_pre, B_post, C_pre_post, D, lr, agg_func)
+            
+            result[w_out[:], w_in[:]] = delta_w.mean(axis=0)[:].unsqueeze(-1).expand(-1, w_in.shape[-1])
 
     return result
 
