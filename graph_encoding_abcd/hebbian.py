@@ -46,16 +46,19 @@ def abcd(pre, post, a, b, c0, c1, d0, d1, lr_in, lr_out):
 
     return torch.mean(result, dim=0).mul_(lr)
 
+
 @torch.compile()
-def dw(w_in, w_out, A_pre, B_post, C_pre_post, D, lr, agg_func):
-    return (agg_func(A_pre[:, w_in]) +
-            agg_func(B_post[:, w_out]) +
-            agg_func(C_pre_post[:, w_out, w_in]) +
-            agg_func(D[w_out, w_in]) 
-        ) * agg_func(lr[w_out, w_in])
+def dw_fast(w_in, w_out, A_pre, B_post, C_pre_post, D, lr, agg_func):
+    return (
+            agg_func(A_pre[:, w_in], dim=-1).values + 
+            agg_func(B_post[:, w_out], dim=-1).values + 
+            agg_func(C_pre_post[:, w_out, w_in], dim=-1).values +
+            agg_func(D[w_out, w_in], dim=-1).values
+        ) * agg_func(lr[w_out, w_in], dim=-1).values
 
 
-def shared_weights_abcd(layer, pre, post, a, b, c0, c1, d0, d1, lr_in, lr_out, agg_func=torch.max):
+def shared_weights_abcd_fast(layer, pre, post, a, b, c0, c1, d0, d1, lr_in, lr_out, agg_func=torch.max):
+
     s1 = pre.shape[0] # batch size
     s2 = post.shape[-1] # out_shape
     s3 = pre.shape[-1] # in_shape
@@ -68,12 +71,8 @@ def shared_weights_abcd(layer, pre, post, a, b, c0, c1, d0, d1, lr_in, lr_out, a
     d1 = d1.unsqueeze(-1).expand(-1, s3)
     lr_out = lr_out.unsqueeze(-1).expand(-1, s3)
     
-    
-    if layer.idx == 1:
-        result = torch.zeros(s2, s3, device='cpu', dtype=pre.dtype)
-    else:
-        result = torch.zeros(s2, s3, device=pre.device, dtype=pre.dtype)
-    
+    result = torch.zeros(s2, s3, device=pre.device, dtype=pre.dtype)
+
     in_ch = layer.shared_weights.shape[0]
     out_ch = layer.shared_weights.shape[1]
     k_size = layer.shared_weights.shape[2]
@@ -84,34 +83,17 @@ def shared_weights_abcd(layer, pre, post, a, b, c0, c1, d0, d1, lr_in, lr_out, a
     D = d0 * d1
     lr = (lr_in + lr_out).div_(2)
 
-    if layer.idx == 1:
-        layer.shared_weights = layer.shared_weights.cpu()
-        A_pre = A_pre.cpu()
-        B_post = B_post.cpu()
-        C_pre_post = C_pre_post.cpu()
-        D = D.cpu()
-        lr = lr.cpu()
-        
-    for i in range(in_ch):
-        for o in range(out_ch):
-            for k in range(k_size):       
-                w_in = layer.shared_weights[i][o][k][0]
-                w_out = layer.shared_weights[i][o][k][1]
+    
+    with record_function('for_loop'):
+        for i in range(in_ch):
+            for o in range(out_ch):
+                w_in = layer.shared_weights[i, o, :, 0]
+                w_out = layer.shared_weights[i, o, :, 1]
                 
-                if layer.idx == 1:
-                    delta_w = (agg_func(A_pre[:, w_in]) +
-                                agg_func(B_post[:, w_out]) +
-                                agg_func(C_pre_post[:, w_out, w_in]) +
-                                agg_func(D[w_out, w_in]) 
-                            ) * agg_func(lr[w_out, w_in])
-                else:
-                    delta_w = dw(w_in, w_out, A_pre, B_post, C_pre_post, D, lr, agg_func)
+                delta_w = dw_fast(w_in, w_out, A_pre, B_post, C_pre_post, D, lr, agg_func)
                 
-                result[w_out, w_in] = delta_w.mean(dim=0)
+                result[w_out[:], w_in[:]] = delta_w.mean(axis=0)[:].unsqueeze(-1).expand(-1, w_in.shape[-1])
 
-    if layer.idx == 1:
-        result = result.cuda()
-        
     return result
 
 
@@ -137,7 +119,7 @@ def update_weights(layer, pre, post, ABCD_params, lr=0.0001, shared_w=False):
         lr_out = ABCD_params[layer.idx]['out']['lr']
     
     if shared_w:
-        w_matrix = shared_weights_abcd(layer, pre, post, A, B, C0, C1, D0, D1, lr_in, lr_out, agg_func=torch.min)
+        w_matrix = shared_weights_abcd_fast(layer, pre, post, A, B, C0, C1, D0, D1, lr_in, lr_out, agg_func=torch.min)
     else:
         w_matrix = abcd(pre, post, A, B, C0, C1, D0, D1, lr_in, lr_out)
 

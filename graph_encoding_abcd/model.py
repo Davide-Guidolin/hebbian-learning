@@ -171,7 +171,6 @@ class BaseNet2(nn.Module):
     
     
 class CNN_CarRacing(nn.Module):
-    "CNN+MLP with n=input_channels frames as input. Non-activated last layer's output"
     def __init__(self):
         super(CNN_CarRacing, self).__init__()
         
@@ -183,7 +182,7 @@ class CNN_CarRacing(nn.Module):
         self.tanh2 = nn.Tanh()
         self.pool2 = nn.MaxPool2d(2, 2)
         
-        self.linear1 = nn.Linear(648, 128, bias=False)
+        self.linear1 = nn.Linear(392, 128, bias=False)
         self.tanh3 = nn.Tanh()
         self.linear2 = nn.Linear(128, 64, bias=False)
         self.tanh4 = nn.Tanh()
