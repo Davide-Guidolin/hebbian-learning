@@ -185,6 +185,7 @@ class UnrolledModel:
         for layer in copy_layers:
             if isinstance(layer, nn.Linear): 
                 torch.nn.init.uniform_(layer.weight.data, -0.1, 0.1)
-                layer.weight.data.mul_(layer.mask_tensor.t())
+                if hasattr(layer, 'mask_tensor'):
+                    layer.weight.data.mul_(layer.mask_tensor.t())
                 
         return nn.Sequential(*copy_layers)
