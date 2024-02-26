@@ -46,8 +46,8 @@ class UnrolledModel:
         layer = nn.Linear(in_feat, out_feat).to(t)
         for p in layer.parameters():
             p.requires_grad = False
-        print("Init weight")
-        torch.nn.init.xavier_normal_(layer.weight)
+        # print("Init weight")
+        # torch.nn.init.xavier_normal_(layer.weight)
 
         print("create coo_m")
         
@@ -182,4 +182,9 @@ class UnrolledModel:
     
     def get_new_model(self):
         copy_layers = [deepcopy(l) for l in self.layers]
+        for layer in copy_layers:
+            if isinstance(layer, nn.Linear): 
+                torch.nn.init.uniform_(layer.weight.data, -0.1, 0.1)
+                layer.weight.data.mul_(layer.mask_tensor.t())
+                
         return nn.Sequential(*copy_layers)

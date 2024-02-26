@@ -95,7 +95,7 @@ def shared_weights_abcd_fast(layer, pre, post, a, b, c0, c1, d0, d1, lr_in, lr_o
     return result
 
 
-def update_weights(layer, pre, post, ABCD_params, lr=0.0001, shared_w=False):
+def update_weights(layer, pre, post, ABCD_params, lr=0.0001, shared_w=False, agg_func=torch.max):
 
     if ABCD_params[layer.idx]['in']['C'] == None: # ABCD schared with previous layer
         A = ABCD_params[layer.idx - 1]['out']['A']
@@ -117,7 +117,7 @@ def update_weights(layer, pre, post, ABCD_params, lr=0.0001, shared_w=False):
         lr_out = ABCD_params[layer.idx]['out']['lr']
     
     if shared_w:
-        w_matrix = shared_weights_abcd_fast(layer, pre, post, A, B, C0, C1, D0, D1, lr_in, lr_out, agg_func=torch.min)
+        w_matrix = shared_weights_abcd_fast(layer, pre, post, A, B, C0, C1, D0, D1, lr_in, lr_out, agg_func=agg_func)
     else:
         w_matrix = abcd(pre, post, A, B, C0, C1, D0, D1, lr_in, lr_out)
 

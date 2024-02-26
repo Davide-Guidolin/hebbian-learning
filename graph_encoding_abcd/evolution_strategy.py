@@ -40,6 +40,7 @@ class EvolutionStrategy:
                  abcd_perturbation_std=1,
                  abcd_learning_rate=0.2,
                  abcd_lr_decay=0.995,
+                 aggregation_function='max',
                  bp_last_layer=True,
                  bp_learning_rate=0.01,
                  saving_path=None,
@@ -48,12 +49,26 @@ class EvolutionStrategy:
         
         self.model = rolled_model
         
+        self.start_iteration = 0
         self.population_size = population_size
         self.sigma = sigma
         self.decay = abcd_lr_decay
         self.abcd_lr = abcd_learning_rate
         self.perturbation_factor = abcd_perturbation_std
         self.num_threads = mp.cpu_count() if num_threads == -1 else num_threads
+        
+        self.bp_last_layer = bp_last_layer
+        self.bp_lr = bp_learning_rate
+        
+        if aggregation_function == 'min':
+            self.aggregation_function = torch.min
+        elif aggregation_function == 'max':
+            self.aggregation_function = torch.max
+        elif aggregation_function == 'median':
+            self.aggregation_function = torch.median
+        else:
+            print(f'Invalid aggregation function {aggregation_function}')
+            exit(1)
         
         self.dataset_type = dataset_type
         if self.dataset_type != "CarRacing-v2":
@@ -66,11 +81,12 @@ class EvolutionStrategy:
         
         self.unrolled_model_type = self.unrolled_model.get_new_model()
         print(self.unrolled_model_type)
-        self.params = self.init_ABCD_parameters(self.unrolled_model_type)
+        if resume_file:
+            self.params = self.load_params(resume_file)
+        else:
+            self.params = self.init_ABCD_parameters(self.unrolled_model_type)
+            
         print(f"ABCD Params: {self.get_ABCD_params_number()}")
-        
-        self.bp_last_layer = bp_last_layer
-        self.bp_lr = bp_learning_rate
         
         self.saving_path = saving_path
         os.makedirs(self.saving_path, exist_ok=True)
@@ -223,7 +239,7 @@ class EvolutionStrategy:
             args = (model, loader, pop, pop_evaluated, shared_dict, device, self.abcd_lr, self.bp_last_layer, self.bp_lr)
             target_fn = evaluate_classification
         else:
-            args = (model, self.dataset_type, pop, pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr, self.input_size, device)
+            args = (model, self.dataset_type, pop, pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr, self.input_size, self.aggregation_function, device)
             target_fn = evaluate_car_racing
         proc = mp.Process(target=target_fn, args=args)
         proc.start()
@@ -277,7 +293,7 @@ class EvolutionStrategy:
                 if self.dataset_type != "CarRacing-v2":
                     scores.append(evaluate_classification(self.unrolled_model.get_new_model(), self.data.test_loader, pop, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, device=device))
                 else:
-                    scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, pop, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, in_size=self.input_size, device=device))
+                    scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, pop, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, in_size=self.input_size, agg_func=self.aggregation_function, device=device))
                 
         scores = np.array(scores)
         return scores    
@@ -307,10 +323,37 @@ class EvolutionStrategy:
         
         del population
         print("Parameters update done")
+        
+    
+    def load_params(self, file_path):
+        with open(file_path, 'rb') as f:
+            params = pickle.load(f)
+        
+        dataset_type, population_size, abcd_lr, decay, perturbation_factor, sigma, agg_func, bp_last_layer, bp_lr, iteration, best_score, avg_score = file_path.split('.pickle')[0].split('_')
+        
+        population_size = int(population_size)
+        abcd_lr = float(abcd_lr)
+        decay = float(decay)
+        perturbation_factor = float(perturbation_factor)
+        sigma = float(sigma)
+        bp_lr = float(bp_lr)
+        iteration = int(iteration)
+        best_score = float(best_score)
+        avg_score = float(avg_score)
+        
+        print(f"Loading {dataset_type} ABCD parameters at iteration {iteration} (best score: {best_score:.2f}, avg score: {avg_score:.2f})")
+        
+        self.start_iteration = iteration
+        self.abcd_lr = abcd_lr
+        self.decay = decay
+        self.sigma = sigma
+        self.bp_lr = bp_lr
+        
+        return params
     
     
     def save_params(self, iteration=0, best_score=0, avg_score=0):
-        filename = os.path.join(self.saving_path, f'{self.dataset_type}_{self.population_size}_{self.abcd_lr}_{self.decay}_{self.perturbation_factor}_{self.sigma}_{self.bp_last_layer}_{self.bp_lr}_{iteration}_{best_score:.2f}_{avg_score:.2f}.pickle')
+        filename = os.path.join(self.saving_path, f'{self.dataset_type}_{self.population_size}_{self.abcd_lr}_{self.decay}_{self.perturbation_factor}_{self.sigma}_{self.aggregation_function}_{self.bp_last_layer}_{self.bp_lr}_{iteration}_{best_score:.2f}_{avg_score:.2f}.pickle')
         
         with open(filename, 'wb') as f:
             pickle.dump(self.params, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -332,7 +375,7 @@ class EvolutionStrategy:
             mp.set_sharing_strategy('file_system')
         
         best_scores = []
-        for iteration in range(iterations):
+        for iteration in range(self.start_iteration, iterations):
             print(f"Iter [{iteration}/{iterations}]")
             
             population = self.init_population()

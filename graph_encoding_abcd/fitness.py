@@ -115,7 +115,7 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
     return acc, total_loss/len(data_loader)
 
 
-def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, in_size=64, device='cuda'):
+def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=None, abcd_learning_rate=0.1, bp_last_layer=False, bp_lr=0.00001, in_size=64, agg_func=torch.max, device='cuda'):
     print(f"[{os.getpid()}] Starting evaluation of population {pop_index}")
     
     if device != 'cpu':
@@ -166,7 +166,7 @@ def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=
                     if hasattr(layer, 'shared_weights'):
                         shared_w = True
                     
-                    update_weights(layer, x, y, abcd_params, shared_w=shared_w, lr=abcd_learning_rate)
+                    update_weights(layer, x, y, abcd_params, shared_w=shared_w, lr=abcd_learning_rate, agg_func=agg_func)
                     
                     x = y
                 else:

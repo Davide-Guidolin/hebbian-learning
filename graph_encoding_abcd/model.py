@@ -81,7 +81,7 @@ def get_out_size(dim, k_size, stride = 1, padding = 0, pooling_size = 1):
     return int(((dim - k_size + 2*padding)/stride + 1)/pooling_size)
 
 #https://www.quora.com/What-percentage-has-been-reached-on-CIFAR-10-using-only-a-multi-layer-perceptron
-class BaseNet(nn.Module):
+class BaseNet(nn.Module): #) ABCD Params: 270888
     def __init__(self):
         super(BaseNet, self).__init__()
         

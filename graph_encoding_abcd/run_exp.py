@@ -23,6 +23,7 @@ def main():
     parser.add_argument('--abcd_perturbation_std', default=1, type=float, help='Standard deviation of the gaussian noise used to perturbate the parameters')
     parser.add_argument('--abcd_learning_rate', default=0.2, type=float, help='Learning rate of the ABCD parameters')
     parser.add_argument('--abcd_lr_decay', default=0.995, type=float, help='Decay factor for abcd_learning_rate')
+    parser.add_argument('--aggregation_function', default='max', type=str, help='Aggregation function used in the ABCD update')
     
     parser.add_argument('--bp_last_layer', action='store_true', help='Use backpropagation in the last layer')
     parser.add_argument('--bp_lr', default=0.001, type=float, help='Learning rate to use for backpropagation')
@@ -33,7 +34,7 @@ def main():
     
     parser.add_argument('--saving_path', default='./params', type=str, help='Path where ABCD parameters will be saved')
     
-    parser.add_argument('--resume_file', default=None, type=str, help='Path to the file')
+    parser.add_argument('--resume_file', default=None, type=str, help='Path to the file containing the ABCD parameters')
     
     args = parser.parse_args()
     
@@ -69,6 +70,7 @@ def main():
         'abcd_learning_rate': args.abcd_learning_rate,
         'abcd_perturbation_std': args.abcd_perturbation_std,
         'abcd_lr_decay': args.abcd_lr_decay,
+        'aggregation_function': args.aggregation_function,
         'architecture': model,
         'dataset': dataset,
         'bp_last_layer': args.bp_last_layer,
@@ -89,9 +91,11 @@ def main():
                                abcd_perturbation_std=args.abcd_perturbation_std,
                                abcd_learning_rate=args.abcd_learning_rate,
                                abcd_lr_decay=args.abcd_lr_decay,
+                               aggregation_function=args.aggregation_function,
                                bp_last_layer=args.bp_last_layer,
                                bp_learning_rate=args.bp_lr,
-                               saving_path=args.saving_path)
+                               saving_path=args.saving_path,
+                               resume_file=args.resume_file)
         
         es.run(iterations=args.epochs, device=args.device)
     else:
