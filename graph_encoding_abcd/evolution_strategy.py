@@ -60,6 +60,7 @@ class EvolutionStrategy:
         self.bp_last_layer = bp_last_layer
         self.bp_lr = bp_learning_rate
         
+        self.aggregation_function_str = aggregation_function
         if aggregation_function == 'min':
             self.aggregation_function = torch.min
         elif aggregation_function == 'max':
@@ -294,8 +295,20 @@ class EvolutionStrategy:
                     scores.append(evaluate_classification(self.unrolled_model.get_new_model(), self.data.test_loader, pop, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, device=device))
                 else:
                     scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, pop, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, in_size=self.input_size, agg_func=self.aggregation_function, device=device))
-                
+        
+        idx_to_remove = []
+        for i, s in enumerate(scores):
+            if s is None:
+                idx_to_remove.append(i)
+        
+        c = 0
+        for i in idx_to_remove:
+            del population[i - c]
+            del scores[i - c]
+            c += 1
+        
         scores = np.array(scores)
+        
         return scores    
     
     
@@ -353,7 +366,7 @@ class EvolutionStrategy:
     
     
     def save_params(self, iteration=0, best_score=0, avg_score=0):
-        filename = os.path.join(self.saving_path, f'{self.dataset_type}_{self.population_size}_{self.abcd_lr}_{self.decay}_{self.perturbation_factor}_{self.sigma}_{self.aggregation_function}_{self.bp_last_layer}_{self.bp_lr}_{iteration}_{best_score:.2f}_{avg_score:.2f}.pickle')
+        filename = os.path.join(self.saving_path, f'{self.dataset_type}_{self.population_size}_{self.abcd_lr}_{self.decay}_{self.perturbation_factor}_{self.sigma}_{self.aggregation_function_str}_{self.bp_last_layer}_{self.bp_lr}_{iteration}_{best_score:.2f}_{avg_score:.2f}.pickle')
         
         with open(filename, 'wb') as f:
             pickle.dump(self.params, f, protocol=pickle.HIGHEST_PROTOCOL)
