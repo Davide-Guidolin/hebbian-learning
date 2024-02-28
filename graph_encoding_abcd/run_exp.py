@@ -5,7 +5,7 @@ import argparse
 import torch
 
 import wandb
-# python3 run_exp.py --dataset CarRacing --population_size 4 --num_threads 1 --epochs 30
+# python3 run_exp.py --dataset CarRacing --population_size 300 --num_threads 5 --epochs 300 --device cuda --saving_path params/max/ --aggregation_function max
 # python3 run_exp.py --dataset CIFAR10 --population_size 4 --num_threads 1 --epochs 30
 
 def main():
