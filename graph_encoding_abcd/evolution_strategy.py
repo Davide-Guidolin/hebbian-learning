@@ -226,38 +226,34 @@ class EvolutionStrategy:
         return p
     
     
-    def start_new_eval(self, p, processes, thread_used, pop_evaluated, shared_dict, device='cpu'):
+    # def start_new_eval(self, p, processes, thread_used, pop_evaluated, shared_dict, device='cpu'):
         
-        pop = self.perturbate(self.params, p)
+    #     pop = self.perturbate(self.params, p)
         
-        if device != 'cpu':
-            pop = self.pop_to_device(pop, device)
+    #     if device != 'cpu':
+    #         pop = self.pop_to_device(pop, device)
 
-        model = self.unrolled_model.get_new_model()
-        shared_dict[pop_evaluated] = None
-        if self.dataset_type != "CarRacing-v2":
-            loader = self.data.get_new_loader(train=True)
-            args = (model, loader, pop, pop_evaluated, shared_dict, device, self.abcd_lr, self.aggregation_function, self.bp_last_layer, self.bp_lr)
-            target_fn = evaluate_classification
-        else:
-            args = (model, self.dataset_type, pop, pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr, self.input_size, self.aggregation_function, device)
-            target_fn = evaluate_car_racing
-        proc = mp.Process(target=target_fn, args=args)
-        proc.start()
+    #     model = self.unrolled_model.get_new_model()
+    #     shared_dict[pop_evaluated] = None
+    #     if self.dataset_type != "CarRacing-v2":
+    #         loader = self.data.get_new_loader(train=True)
+    #         args = (model, loader, pop, pop_evaluated, shared_dict, device, self.abcd_lr, self.bp_last_layer, self.bp_lr)
+    #         target_fn = evaluate_classification
+    #     else:
+    #         args = (model, self.dataset_type, pop, pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr, self.input_size, self.aggregation_function, device)
+    #         target_fn = evaluate_car_racing
+    #     proc = mp.Process(target=target_fn, args=args)
+    #     proc.start()
         
-        processes.append(proc)
-        thread_used += 1
-        pop_evaluated += 1
-        print(f"Processes spawned: {len(processes)} - Processes running {thread_used}")
+    #     processes.append(proc)
+    #     thread_used += 1
+    #     pop_evaluated += 1
+    #     print(f"Processes spawned: {len(processes)} - Processes running {thread_used}")
         
-        return processes, thread_used, pop_evaluated
+    #     return processes, thread_used, pop_evaluated
     
     
-    def get_scores(self, population, parallel=False, keep_best_only=False, device='cpu'):        
-        if keep_best_only:
-            best_score = 0
-            best_pop = None        
-
+    def get_scores(self, pool, population, parallel=False, device='cpu'):        
         if parallel:
             print("Parallelizing")
             processes = []
@@ -266,19 +262,27 @@ class EvolutionStrategy:
             shared_dict = manager.dict()
             
             pop_evaluated = 0
-            thread_used = 0
-            processes_joined = 0
             while pop_evaluated < self.population_size:
-                if thread_used < self.num_threads:
-                    processes, thread_used, pop_evaluated = self.start_new_eval(population[pop_evaluated], processes, thread_used, pop_evaluated, shared_dict, device=device)
+                pop = self.perturbate(self.params, population[pop_evaluated])
+        
+                if device != 'cpu':
+                    pop = self.pop_to_device(pop, device)
+
+                model = self.unrolled_model.get_new_model()
+                shared_dict[pop_evaluated] = None
+                if self.dataset_type != "CarRacing-v2":
+                    loader = self.data.get_new_loader(train=True)
+                    args = (model, loader, pop, pop_evaluated, shared_dict, device, self.abcd_lr, self.bp_last_layer, self.bp_lr)
+                    target_fn = evaluate_classification
                 else:
-                    processes[processes_joined].join()
-                    processes_joined += 1
-                    thread_used -= 1                       
-            
-            for proc in processes:
-                proc.join()
-                proc.close()     
+                    args = (model, self.dataset_type, pop, pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr, self.input_size, self.aggregation_function, device)
+                    target_fn = evaluate_car_racing
+                    
+                processes.append(pool.apply_async(target_fn, args))
+                pop_evaluated += 1
+                
+            for p in processes:
+                p.wait()   
             
             scores = list(dict(sorted(shared_dict.items(), key=lambda x: x[0])).values())
             
@@ -312,7 +316,7 @@ class EvolutionStrategy:
         return scores    
     
     
-    def update_params(self, population, scores, keep_best_only=False):
+    def update_params(self, population, scores):
         
         ranks = compute_centered_ranks(scores)
         
@@ -373,9 +377,6 @@ class EvolutionStrategy:
                         
     
     def run(self, iterations, device='cpu'):
-        keep_best_only = False
-        if keep_best_only:
-            self.best_total_score = 0
         
         # export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1
         parallel = self.num_threads > 1
@@ -386,13 +387,15 @@ class EvolutionStrategy:
                 exit(0)
             mp.set_start_method('spawn')
             mp.set_sharing_strategy('file_system')
+            
+        pool = mp.Pool(self.num_threads) if parallel else None
         
         best_scores = []
         for iteration in range(self.start_iteration, iterations):
             print(f"Iter [{iteration}/{iterations}]")
             
             population = self.init_population()
-            scores = self.get_scores(population=population, parallel=parallel, keep_best_only=keep_best_only, device=device)
+            scores = self.get_scores(pool=pool, population=population, parallel=parallel, device=device)
             
             best_score = np.amax(scores)
             avg_score = np.mean(scores)
@@ -401,11 +404,13 @@ class EvolutionStrategy:
             wandb.log({"best reward": best_score, "avg reward": avg_score, "scores": scores}, step=iteration)
             best_scores.append(best_score)
             
-            self.update_params(population, scores, keep_best_only=keep_best_only)
+            self.update_params(population, scores)
             if self.saving_path:
                 self.save_params(iteration, best_score, avg_score)
 
         for iteration in range(iterations):
             print(f"Best accuracy [{iteration}/{iterations}]: {best_scores[iteration]}")
     
-
+        if pool is not None:
+            pool.close()
+            pool.join()
