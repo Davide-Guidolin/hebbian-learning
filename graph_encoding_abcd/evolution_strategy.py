@@ -57,6 +57,16 @@ class EvolutionStrategy:
         self.perturbation_factor = abcd_perturbation_std
         self.num_threads = mp.cpu_count() if num_threads == -1 else num_threads
         
+        n_workers = 8
+        if num_threads > 1:
+            if (not 'MKL_NUM_THREADS' in os.environ) or (not 'OMP_NUM_THREADS' in os.environ) or (os.environ['MKL_NUM_THREADS'] != "1") or (os.environ['OMP_NUM_THREADS'] != "1"):
+                print(f"For parallel execution run this command: export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1")
+                exit(0)
+                
+            mp.set_start_method('spawn')
+            mp.set_sharing_strategy('file_system')
+            n_workers = 0
+        
         self.bp_last_layer = bp_last_layer
         self.bp_lr = bp_learning_rate
         
@@ -73,7 +83,8 @@ class EvolutionStrategy:
         
         self.dataset_type = dataset_type
         if self.dataset_type != "CarRacing-v2":
-            self.data = DataManager(self.dataset_type, num_workers=8)
+            print(f"Using {n_workers} workers")
+            self.data = DataManager(self.dataset_type, num_workers=n_workers, batch_size=64)
             self.input_size = next(iter(self.data.train_loader))[0].shape[-1]
         else:
             self.input_size = 64
@@ -272,7 +283,7 @@ class EvolutionStrategy:
                 shared_dict[pop_evaluated] = None
                 if self.dataset_type != "CarRacing-v2":
                     loader = self.data.get_new_loader(train=True)
-                    args = (model, loader, pop, pop_evaluated, shared_dict, device, self.abcd_lr, self.bp_last_layer, self.bp_lr)
+                    args = (model, loader, pop, pop_evaluated, shared_dict, device, self.abcd_lr, self.aggregation_function, self.bp_last_layer, self.bp_lr)
                     target_fn = evaluate_classification
                 else:
                     args = (model, self.dataset_type, pop, pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr, self.input_size, self.aggregation_function, device)
@@ -381,13 +392,6 @@ class EvolutionStrategy:
         # export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1
         parallel = self.num_threads > 1
         
-        if parallel:
-            if (not 'MKL_NUM_THREADS' in os.environ) or (not 'OMP_NUM_THREADS' in os.environ) or (os.environ['MKL_NUM_THREADS'] != "1") or (os.environ['OMP_NUM_THREADS'] != "1"):
-                print(f"For parallel execution run this command: export MKL_NUM_THREADS=1; export OMP_NUM_THREADS=1")
-                exit(0)
-            mp.set_start_method('spawn')
-            mp.set_sharing_strategy('file_system')
-            
         pool = mp.Pool(self.num_threads) if parallel else None
         
         best_scores = []

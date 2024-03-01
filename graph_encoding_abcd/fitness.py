@@ -61,8 +61,9 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
                 
         if i%75 == 0:
             print(f"[{os.getpid()}] Batch {i}/{len(data_loader)} Partial accuracy {correct/max(1,total):.5f}  ({correct}/{total})")
+            
         x = x.view(x.shape[0], -1).to(device).to(dtype)
-        true_y = true_y.to(device).to(dtype)
+        true_y = true_y.to(device)
         
         activation = False
         for l, layer in enumerate(model):
@@ -72,7 +73,7 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
             
             if bp_last_layer and l == len(model)-1:
                 optim.zero_grad()
-                y = layer(x)
+                y = layer(x).to(torch.float32)
                 
                 loss = criterion(y, true_y)
                 total_loss += loss.item()
@@ -110,7 +111,6 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
         correct += torch.sum(torch.argmax(x, dim=-1) == true_y)
         total += true_y.shape[0]
 
-    print(f"[{os.getpid()}] {correct}/{total}")
     acc = correct/total
     print(f"[{os.getpid()}]Accuracy: {acc}")
     
