@@ -122,6 +122,12 @@ class SoftHebbTrain:
         train_loader = self.data.get_new_loader(train=True)
         test_loader = self.data.get_new_loader(train=False)
         
+        if device != 'cpu':
+            for layer in m:
+                layer.to(device)
+                if hasattr(layer, 'mask_tensor'):
+                    layer.mask_tensor = layer.mask_tensor.to(device)
+        
         print("\nStarting softhebb training:")
         print(f"\tbp_last_layer = {self.bp_last_layer}")
         print(f"\tbp_lr = {self.bp_lr}")
@@ -138,11 +144,6 @@ class SoftHebbTrain:
     def evaluate(self, model, data_loader, device='cpu'):
         t = model[0].weight.dtype
         model.eval()
-        if device != 'cpu':
-            for layer in model:
-                layer.to(device)
-                if hasattr(layer, 'mask_tensor'):
-                    layer.mask_tensor = layer.mask_tensor.to(device)
                     
         criterion = nn.CrossEntropyLoss()
         correct = 0

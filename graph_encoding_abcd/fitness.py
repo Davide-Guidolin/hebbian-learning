@@ -36,18 +36,21 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
     
     t = model[0].weight.dtype
     
-    if device != 'cpu':
-        dtype = torch.float16
-    else:
+    if softhebb_train:
         dtype = torch.float32
-    
-    if device != 'cpu':
-        for layer in model:
-            layer.to(device).to(dtype)
-            if hasattr(layer, 'mask_tensor'):
-                layer.mask_tensor = layer.mask_tensor.to(device).to(dtype)
-            if hasattr(layer, 'shared_weights'):
-                layer.shared_weights = layer.shared_weights.to(device)
+    else:
+        if device != 'cpu':
+            dtype = torch.float16
+        else:
+            dtype = torch.float32
+        
+        if device != 'cpu':
+            for layer in model:
+                layer.to(device).to(dtype)
+                if hasattr(layer, 'mask_tensor'):
+                    layer.mask_tensor = layer.mask_tensor.to(device).to(dtype)
+                if hasattr(layer, 'shared_weights'):
+                    layer.shared_weights = layer.shared_weights.to(device)
 
     if bp_last_layer:
         model[-1].weight.requires_grad = True
@@ -59,8 +62,8 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
     total_loss = 0
     for i, (x, true_y) in enumerate(data_loader):
                 
-        if i%75 == 0:
-            print(f"[{os.getpid()}] Batch {i}/{len(data_loader)} Partial accuracy {correct/max(1,total):.5f}  ({correct}/{total})")
+        # if i%75 == 0:
+        #     print(f"[{os.getpid()}] Batch {i}/{len(data_loader)} Partial accuracy {correct/max(1,total):.5f}  ({correct}/{total})")
             
         x = x.view(x.shape[0], -1).to(device).to(dtype)
         true_y = true_y.to(device)
@@ -112,7 +115,8 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
         total += true_y.shape[0]
 
     acc = correct/total
-    print(f"[{os.getpid()}]Accuracy: {acc}")
+    if not softhebb_train:
+        print(f"[{os.getpid()}] Accuracy: {acc}")
     
     if shared_dict is not None:
         shared_dict[pop_index] = acc
