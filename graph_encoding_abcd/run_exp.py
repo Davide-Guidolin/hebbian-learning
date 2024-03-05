@@ -53,7 +53,7 @@ def main():
         if args.bp:
             project = "Backprop"
         else:
-            project = "CIFAR-Softhebb"
+            project = "CIFAR-Softhebb-ws"
     else:
         project = "CIFAR-ABCD"
     
