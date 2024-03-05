@@ -158,7 +158,7 @@ def shared_weights_softhebb(layer, w_matrix, agg_func):
             w_in = layer.shared_weights[i, o, :, 0]
             w_out = layer.shared_weights[i, o, :, 1]
             
-            delta_w = torch.mean(w_matrix[w_out[:], w_in[:]])
+            delta_w = agg_func(w_matrix[w_out[:], w_in[:]])
             
             w_matrix[w_out[:], w_in[:]] = delta_w
             
