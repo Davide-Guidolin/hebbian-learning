@@ -103,7 +103,7 @@ def evaluate_classification(model, data_loader, abcd_params=None, pop_index=-1, 
                         shared_w = True
                     
                     if softhebb_train:
-                        softhebb_update(layer, x, pre_act, shared_w=shared_w, lr=softhebb_lr)
+                        softhebb_update(layer, x, pre_act, shared_w=shared_w, lr=softhebb_lr, agg_func=agg_func)
                     else:
                         update_weights(layer, x, y, abcd_params, shared_w=shared_w, lr=abcd_learning_rate, agg_func=agg_func)
                     

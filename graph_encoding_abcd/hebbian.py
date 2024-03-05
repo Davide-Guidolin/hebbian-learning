@@ -145,12 +145,32 @@ def softhebb(x, pre_act, w):
     
     del soft, yu
     
-    return dw, max_neuron
+    return dw
 
 
-def softhebb_update(layer, x, pre_act, lr=0.0001, shared_w=False):
+def shared_weights_softhebb(layer, w_matrix, agg_func):
+    in_ch = layer.shared_weights.shape[0]
+    out_ch = layer.shared_weights.shape[1]
+    k_size = layer.shared_weights.shape[2]
+
+    for i in range(in_ch):
+        for o in range(out_ch):
+            w_in = layer.shared_weights[i, o, :, 0]
+            w_out = layer.shared_weights[i, o, :, 1]
+            
+            delta_w = torch.mean(w_matrix[w_out[:], w_in[:]])
+            
+            w_matrix[w_out[:], w_in[:]] = delta_w
+            
+    return w_matrix
+
+
+def softhebb_update(layer, x, pre_act, lr=0.0001, shared_w=False, agg_func=torch.max):
     
-    w_update, max_neuron = softhebb(x, pre_act, layer.weight)
+    w_update = softhebb(x, pre_act, layer.weight)
+    
+    if shared_w:
+        w_update = shared_weights_softhebb(layer, w_update, agg_func)
     
     # normalize
     w_update = w_update / torch.abs(w_update).amax()
@@ -159,8 +179,5 @@ def softhebb_update(layer, x, pre_act, lr=0.0001, shared_w=False):
     
     if hasattr(layer, 'mask_tensor'):
         w_matrix.mul_(layer.mask_tensor.t())
-    
-    # if shared_w:
-    #     w_matrix = shared_weights(layer, w_matrix)
 
     layer.weight = nn.Parameter(w_matrix, requires_grad=False)
