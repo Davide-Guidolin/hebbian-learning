@@ -93,7 +93,7 @@ class EvolutionStrategy:
         
         self.unrolled_model = UnrolledModel(self.model, self.input_size)
         
-        self.unrolled_model_type = self.unrolled_model.get_new_model()
+        self.unrolled_model_type = self.unrolled_model.get_new_model(self.aggregation_function)
         print(self.unrolled_model_type)
         if resume_file:
             self.params = self.load_params(resume_file)
@@ -239,33 +239,6 @@ class EvolutionStrategy:
         return p
     
     
-    # def start_new_eval(self, p, processes, thread_used, pop_evaluated, shared_dict, device='cpu'):
-        
-    #     pop = self.perturbate(self.params, p)
-        
-    #     if device != 'cpu':
-    #         pop = self.pop_to_device(pop, device)
-
-    #     model = self.unrolled_model.get_new_model()
-    #     shared_dict[pop_evaluated] = None
-    #     if self.dataset_type != "CarRacing-v2":
-    #         loader = self.data.get_new_loader(train=True)
-    #         args = (model, loader, pop, pop_evaluated, shared_dict, device, self.abcd_lr, self.bp_last_layer, self.bp_lr)
-    #         target_fn = evaluate_classification
-    #     else:
-    #         args = (model, self.dataset_type, pop, pop_evaluated, shared_dict, self.abcd_lr, self.bp_last_layer, self.bp_lr, self.input_size, self.aggregation_function, device)
-    #         target_fn = evaluate_car_racing
-    #     proc = mp.Process(target=target_fn, args=args)
-    #     proc.start()
-        
-    #     processes.append(proc)
-    #     thread_used += 1
-    #     pop_evaluated += 1
-    #     print(f"Processes spawned: {len(processes)} - Processes running {thread_used}")
-        
-    #     return processes, thread_used, pop_evaluated
-    
-    
     def get_scores(self, pool, population, parallel=False, device='cpu'):        
         if parallel:
             print("Parallelizing")
@@ -281,7 +254,7 @@ class EvolutionStrategy:
                 if device != 'cpu':
                     pop = self.pop_to_device(pop, device)
 
-                model = self.unrolled_model.get_new_model()
+                model = self.unrolled_model.get_new_model(self.aggregation_function)
                 shared_dict[pop_evaluated] = None
                 if self.dataset_type != "CarRacing-v2":
                     loader = self.data.get_new_loader(train=True)
@@ -309,9 +282,9 @@ class EvolutionStrategy:
                     pop = self.pop_to_device(pop, device)
                 
                 if self.dataset_type != "CarRacing-v2":
-                    scores.append(evaluate_classification(self.unrolled_model.get_new_model(), self.data.train_loader, pop, pop_idx, abcd_learning_rate=self.abcd_lr, agg_func=self.aggregation_function, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, device=device))
+                    scores.append(evaluate_classification(self.unrolled_model.get_new_model(self.aggregation_function), self.data.train_loader, pop, pop_idx, abcd_learning_rate=self.abcd_lr, agg_func=self.aggregation_function, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, device=device))
                 else:
-                    scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(), self.dataset_type, pop, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, in_size=self.input_size, agg_func=self.aggregation_function, device=device))
+                    scores.append(evaluate_car_racing(self.unrolled_model.get_new_model(self.aggregation_function), self.dataset_type, pop, pop_idx, abcd_learning_rate=self.abcd_lr, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, in_size=self.input_size, agg_func=self.aggregation_function, device=device))
         
         idx_to_remove = []
         for i, s in enumerate(scores):

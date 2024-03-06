@@ -180,11 +180,31 @@ class UnrolledModel:
                     
         return layers
     
-    def get_new_model(self):
+    def get_new_model(self, agg_func):
         copy_layers = [deepcopy(l) for l in self.layers]
         for layer in copy_layers:
             if isinstance(layer, nn.Linear): 
                 torch.nn.init.uniform_(layer.weight.data, -0.1, 0.1)
+                    
+                if hasattr(layer, 'shared_weights'):
+                    in_ch = layer.shared_weights.shape[0]
+                    out_ch = layer.shared_weights.shape[1]
+                    k_size = layer.shared_weights.shape[2]
+                    
+                    res = torch.zeros_like(layer.weight)
+
+                    for i in range(in_ch):
+                        for o in range(out_ch):
+                            w_in = layer.shared_weights[i, o, :, 0]
+                            w_out = layer.shared_weights[i, o, :, 1]
+                            
+                            delta_w = agg_func(layer.weight[w_out[:], w_in[:]])
+                            
+                            res[w_out[:], w_in[:]] = delta_w
+                            
+                    layer.weight = nn.Parameter(res, requires_grad=False)
+                    
+                
                 if hasattr(layer, 'mask_tensor'):
                     layer.weight.data.mul_(layer.mask_tensor.t())
                 
