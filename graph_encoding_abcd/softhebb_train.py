@@ -130,7 +130,7 @@ class SoftHebbTrain:
             
     
     def train(self, n_epochs=10, device='cpu'):
-        m = self.unrolled_model.get_new_model(self.aggregation_function)
+        m = self.unrolled_model.get_new_model()
         print(m)
         train_loader = self.data.get_new_loader(train=True)
         test_loader = self.data.get_new_loader(train=False)
@@ -151,7 +151,7 @@ class SoftHebbTrain:
             test_acc, test_loss = self.evaluate(m, test_loader, device=device)
             
             print(f"[{i+1}/{n_epochs}] Train Acc: {train_acc:.4f}  Test Acc: {test_acc:.4f} Train Loss:  {train_loss:.5f} Test Loss: {test_loss:.5f}")
-            # wandb.log({"Train Accuracy": train_acc, "Test Accuracy": test_acc, "Train Loss": train_loss, "Test Loss": test_loss}, step=i)
+            wandb.log({"Train Accuracy": train_acc, "Test Accuracy": test_acc, "Train Loss": train_loss, "Test Loss": test_loss}, step=i)
             
     
     def evaluate(self, model, data_loader, device='cpu'):

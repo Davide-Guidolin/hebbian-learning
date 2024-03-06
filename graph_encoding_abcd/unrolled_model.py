@@ -180,7 +180,7 @@ class UnrolledModel:
                     
         return layers
     
-    def get_new_model(self, agg_func):
+    def get_new_model(self):
         copy_layers = [deepcopy(l) for l in self.layers]
         for layer in copy_layers:
             if isinstance(layer, nn.Linear): 
@@ -198,9 +198,9 @@ class UnrolledModel:
                             w_in = layer.shared_weights[i, o, :, 0]
                             w_out = layer.shared_weights[i, o, :, 1]
                             
-                            delta_w = agg_func(layer.weight[w_out[:], w_in[:]])
+                            w = 0.2 * torch.rand(1).item() - 0.1
                             
-                            res[w_out[:], w_in[:]] = delta_w
+                            res[w_out[:], w_in[:]] = w
                             
                     layer.weight = nn.Parameter(res, requires_grad=False)
                     
