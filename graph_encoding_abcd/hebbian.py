@@ -152,6 +152,8 @@ def shared_weights_softhebb(layer, w_matrix, agg_func):
     in_ch = layer.shared_weights.shape[0]
     out_ch = layer.shared_weights.shape[1]
     k_size = layer.shared_weights.shape[2]
+    
+    res = torch.zeros_like(w_matrix)
 
     for i in range(in_ch):
         for o in range(out_ch):
@@ -160,9 +162,9 @@ def shared_weights_softhebb(layer, w_matrix, agg_func):
             
             delta_w = agg_func(w_matrix[w_out[:], w_in[:]])
             
-            w_matrix[w_out[:], w_in[:]] = delta_w
+            res[w_out[:], w_in[:]] = delta_w
             
-    return w_matrix
+    return res
 
 
 def softhebb_update(layer, x, pre_act, lr=0.0001, shared_w=False, agg_func=torch.max):
