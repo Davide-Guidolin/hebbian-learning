@@ -151,7 +151,7 @@ class SoftHebbTrain:
             test_acc, test_loss = self.evaluate(m, test_loader, device=device)
             
             print(f"[{i+1}/{n_epochs}] Train Acc: {train_acc:.4f}  Test Acc: {test_acc:.4f} Train Loss:  {train_loss:.5f} Test Loss: {test_loss:.5f}")
-            # wandb.log({"Train Accuracy": train_acc, "Test Accuracy": test_acc, "Train Loss": train_loss, "Test Loss": test_loss}, step=i)
+            wandb.log({"Train Accuracy": train_acc, "Test Accuracy": test_acc, "Train Loss": train_loss, "Test Loss": test_loss}, step=i)
             
     
     def evaluate(self, model, data_loader, device='cpu'):
