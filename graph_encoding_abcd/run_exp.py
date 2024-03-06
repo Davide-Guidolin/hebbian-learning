@@ -106,7 +106,8 @@ def main():
                            dataset_type=dataset,
                            bp_last_layer=args.bp_last_layer,
                            bp_learning_rate=args.bp_lr,
-                           softhebb_lr=args.softhebb_lr)
+                           softhebb_lr=args.softhebb_lr,
+                           aggregation_function=args.aggregation_function)
         
         if args.bp:
             sh.train_backprop(n_epochs=args.epochs, device=args.device)

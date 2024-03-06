@@ -77,6 +77,8 @@ class EvolutionStrategy:
             self.aggregation_function = torch.max
         elif aggregation_function == 'median':
             self.aggregation_function = torch.median
+        elif aggregation_function == 'mean':
+            self.aggregation_function = torch.mean
         else:
             print(f'Invalid aggregation function {aggregation_function}')
             exit(1)

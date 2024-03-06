@@ -43,7 +43,7 @@ def apply_prune_mask(net):
         layer.weight.register_hook(hook_factory(keep_mask))
 
 class SoftHebbTrain:
-    def __init__(self, rolled_model, dataset_type="CIFAR10", bp_last_layer=True, bp_learning_rate=0.001, softhebb_lr=0.005):
+    def __init__(self, rolled_model, dataset_type="CIFAR10", bp_last_layer=True, bp_learning_rate=0.001, softhebb_lr=0.005, aggregation_function='max'):
         self.model = rolled_model
         
         self.dataset_type = dataset_type
@@ -56,6 +56,19 @@ class SoftHebbTrain:
         self.bp_last_layer = bp_last_layer
         self.bp_lr = bp_learning_rate
         self.softhebb_lr = softhebb_lr
+        
+        self.aggregation_function_str = aggregation_function
+        if aggregation_function == 'min':
+            self.aggregation_function = torch.min
+        elif aggregation_function == 'max':
+            self.aggregation_function = torch.max
+        elif aggregation_function == 'median':
+            self.aggregation_function = torch.median
+        elif aggregation_function == 'mean':
+            self.aggregation_function = torch.mean
+        else:
+            print(f'Invalid aggregation function {aggregation_function}')
+            exit(1)
         
     
     def train_backprop(self, n_epochs=160, device='cpu'):
@@ -134,11 +147,11 @@ class SoftHebbTrain:
         print(f"\tsofthebb_lr = {self.softhebb_lr}\n\n")
         
         for i in range(n_epochs):
-            train_acc, train_loss = evaluate_classification(m, train_loader, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, softhebb_train=True, softhebb_lr=self.softhebb_lr, device=device)
+            train_acc, train_loss = evaluate_classification(m, train_loader, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, softhebb_train=True, softhebb_lr=self.softhebb_lr, agg_func=self.aggregation_function, device=device)
             test_acc, test_loss = self.evaluate(m, test_loader, device=device)
             
             print(f"[{i+1}/{n_epochs}] Train Acc: {train_acc:.4f}  Test Acc: {test_acc:.4f} Train Loss:  {train_loss:.5f} Test Loss: {test_loss:.5f}")
-            wandb.log({"Train Accuracy": train_acc, "Test Accuracy": test_acc, "Train Loss": train_loss, "Test Loss": test_loss}, step=i)
+            # wandb.log({"Train Accuracy": train_acc, "Test Accuracy": test_acc, "Train Loss": train_loss, "Test Loss": test_loss}, step=i)
             
     
     def evaluate(self, model, data_loader, device='cpu'):
