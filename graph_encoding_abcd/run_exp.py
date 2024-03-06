@@ -44,8 +44,13 @@ def main():
     
     if dataset == 'CarRacing-v2':
         model = CNN_CarRacing()
-    else:
+    elif dataset == 'CIFAR10':
         model = BaseNet()
+    elif dataset == 'CIFAR100':
+        model = BaseNet100()
+    else:
+        print(f"Invalid dataset {dataset}")
+        exit(1)
         
     if dataset == "CarRacing-v2":
         project = "CarRacing_abcd_ws"
