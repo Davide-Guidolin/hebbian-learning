@@ -103,6 +103,7 @@ class BaseNet(nn.Module): #) ABCD Params: 270888
         self.avg_pool3 = nn.AvgPool2d(2, 2, 0)
         out_size = get_out_size(out_size, 3, pooling_size=2)
 
+        self.dropout = nn.Dropout(p=0.5)
         self.fc4 = nn.Linear(out_size*out_size*128, 10)        
         
     def forward(self, x):

@@ -157,8 +157,8 @@ def evaluate_car_racing(model, env_type, abcd_params, pop_index=-1, shared_dict=
                 layer.shared_weights = layer.shared_weights.to(device)
 
     env = gym.make(env_type)
-    env = w.ResizeObservation(env, in_size)        # Resize and normalize input
     env = CropFrame(env)
+    env = w.ResizeObservation(env, in_size)        # Resize and normalize input
     env = ScaledFloatFrame(env)
     
     state, _ = env.reset()
