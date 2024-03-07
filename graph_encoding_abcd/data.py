@@ -1,5 +1,5 @@
 from torchvision.datasets import CIFAR10, CIFAR100
-from torchvision.transforms import ToTensor
+from torchvision.transforms import ToTensor, Normalize, Compose
 from torch.utils.data import DataLoader
 import torch
 import os
@@ -21,8 +21,10 @@ class DataManager():
         
         os.makedirs(save_path, exist_ok=True)
         
-        self.train_set = self.dataset_classes[self.dataset_name](self.save_path, transform=ToTensor(), train=True, download=True)
-        self.test_set = self.dataset_classes[self.dataset_name](self.save_path, transform=ToTensor(), train=False, download=True)
+        t = Compose([ToTensor(), Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))])
+        
+        self.train_set = self.dataset_classes[self.dataset_name](self.save_path, transform=t, train=True, download=True)
+        self.test_set = self.dataset_classes[self.dataset_name](self.save_path, transform=t, train=False, download=True)
 
         self.train_loader = DataLoader(self.train_set, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
         self.test_loader = DataLoader(self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)

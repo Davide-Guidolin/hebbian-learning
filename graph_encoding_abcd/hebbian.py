@@ -171,13 +171,13 @@ def softhebb_update(layer, x, pre_act, lr=0.0001, shared_w=False, agg_func=torch
     
     w_update = softhebb(x, pre_act, layer.weight)
     
-    if shared_w:
-        w_update = shared_weights_softhebb(layer, w_update, agg_func)
-    
     # normalize
     w_update = w_update / torch.abs(w_update).amax()
 
     w_matrix = layer.weight + lr * w_update
+    
+    if shared_w:
+        w_matrix = shared_weights_softhebb(layer, w_matrix, agg_func)
     
     if hasattr(layer, 'mask_tensor'):
         w_matrix.mul_(layer.mask_tensor.t())

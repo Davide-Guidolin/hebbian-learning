@@ -4,6 +4,7 @@ from unrolled_model import UnrolledModel
 import wandb
 import torch
 import torch.nn as nn
+from torch.optim import SGD, Adam
 
 def apply_prune_mask(net):
 
@@ -146,8 +147,17 @@ class SoftHebbTrain:
         print(f"\tbp_lr = {self.bp_lr}")
         print(f"\tsofthebb_lr = {self.softhebb_lr}\n\n")
         
+        only_bp = False
+        lr_halve = [int(i*(n_epochs-1)) for i in [0.20, 0.35, 0.50, 0.60, 0.70, 0.80, 0.90]]
+        optim = Adam(m[-1].parameters(), lr=self.bp_lr)
         for i in range(n_epochs):
-            train_acc, train_loss = evaluate_classification(m, train_loader, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, softhebb_train=True, softhebb_lr=self.softhebb_lr, agg_func=self.aggregation_function, device=device)
+            if i > 0:
+                only_bp = True
+            if (i-1) in lr_halve:
+                print("Halving lr")
+                self.bp_lr = self.bp_lr / 2
+
+            train_acc, train_loss = evaluate_classification(m, train_loader, bp_last_layer=self.bp_last_layer, bp_lr=self.bp_lr, softhebb_train=True, softhebb_lr=self.softhebb_lr, agg_func=self.aggregation_function, device=device, only_bp=only_bp, optim=optim)
             test_acc, test_loss = self.evaluate(m, test_loader, device=device)
             
             print(f"[{i+1}/{n_epochs}] Train Acc: {train_acc:.4f}  Test Acc: {test_acc:.4f} Train Loss:  {train_loss:.5f} Test Loss: {test_loss:.5f}")
