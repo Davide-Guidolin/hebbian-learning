@@ -86,25 +86,25 @@ class BaseNet(nn.Module): #) ABCD Params: 270888
         super(BaseNet, self).__init__()
         
         self.bn1 = nn.BatchNorm2d(3)
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=8, kernel_size=5)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=5)
         self.activ1 = Triangle(power=0.7)
         self.max_pool1 = nn.MaxPool2d(4, 2, 1)
         out_size = get_out_size(32, 5, pooling_size=2)
         
-        self.bn2 = nn.BatchNorm2d(8)
-        self.conv2 = nn.Conv2d(in_channels=8, out_channels=32, kernel_size=3)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=128, kernel_size=3)
         self.activ2 = Triangle(power=1.4)
         self.max_pool2 = nn.MaxPool2d(4, 2, 1)
         out_size = get_out_size(out_size, 3, pooling_size=2)
         
-        self.bn3 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(in_channels=32, out_channels=128, kernel_size=3)
+        self.bn3 = nn.BatchNorm2d(128)
+        self.conv3 = nn.Conv2d(in_channels=128, out_channels=512, kernel_size=3)
         self.activ3 = Triangle(power=1.)
         self.avg_pool3 = nn.AvgPool2d(2, 2, 0)
         out_size = get_out_size(out_size, 3, pooling_size=2)
 
         self.dropout = nn.Dropout(p=0.5)
-        self.fc4 = nn.Linear(out_size*out_size*128, 10)        
+        self.fc4 = nn.Linear(out_size*out_size*512, 10)        
         
     def forward(self, x):
         x = self.bn1(x)
