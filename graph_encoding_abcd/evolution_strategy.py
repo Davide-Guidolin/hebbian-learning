@@ -37,7 +37,6 @@ class EvolutionStrategy:
                  population_size=100,
                  num_threads=1,
                  sigma=0.1,
-                 abcd_perturbation_std=1,
                  abcd_learning_rate=0.2,
                  abcd_lr_decay=0.995,
                  aggregation_function='max',
@@ -54,7 +53,6 @@ class EvolutionStrategy:
         self.sigma = sigma
         self.decay = abcd_lr_decay
         self.abcd_lr = abcd_learning_rate
-        self.perturbation_factor = abcd_perturbation_std
         self.num_threads = mp.cpu_count() if num_threads == -1 else num_threads
         
         n_workers = 8
@@ -332,12 +330,11 @@ class EvolutionStrategy:
         with open(file_path, 'rb') as f:
             params = pickle.load(f)
         
-        dataset_type, population_size, abcd_lr, decay, perturbation_factor, sigma, agg_func, bp_last_layer, bp_lr, iteration, best_score, avg_score = file_path.split('.pickle')[0].split('_')
+        dataset_type, population_size, abcd_lr, decay, sigma, agg_func, bp_last_layer, bp_lr, iteration, best_score, avg_score = file_path.split('.pickle')[0].split('_')
         
         population_size = int(population_size)
         abcd_lr = float(abcd_lr)
         decay = float(decay)
-        perturbation_factor = float(perturbation_factor)
         sigma = float(sigma)
         bp_lr = float(bp_lr)
         iteration = int(iteration)
@@ -356,7 +353,7 @@ class EvolutionStrategy:
     
     
     def save_params(self, iteration=0, best_score=0, avg_score=0):
-        filename = os.path.join(self.saving_path, f'{self.dataset_type}_{self.population_size}_{self.abcd_lr}_{self.decay}_{self.perturbation_factor}_{self.sigma}_{self.aggregation_function_str}_{self.bp_last_layer}_{self.bp_lr}_{iteration}_{best_score:.2f}_{avg_score:.2f}.pickle')
+        filename = os.path.join(self.saving_path, f'{self.dataset_type}_{self.population_size}_{self.abcd_lr}_{self.decay}_{self.sigma}_{self.aggregation_function_str}_{self.bp_last_layer}_{self.bp_lr}_{iteration}_{best_score:.2f}_{avg_score:.2f}.pickle')
         
         with open(filename, 'wb') as f:
             pickle.dump(self.params, f, protocol=pickle.HIGHEST_PROTOCOL)

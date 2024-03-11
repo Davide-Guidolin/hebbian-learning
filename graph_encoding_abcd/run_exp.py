@@ -5,8 +5,6 @@ import argparse
 import torch
 
 import wandb
-# python3 run_exp.py --dataset CarRacing --population_size 300 --num_threads 5 --epochs 300 --device cuda --saving_path params/max/ --aggregation_function max
-# python3 run_exp.py --dataset CIFAR10 --population_size 4 --num_threads 1 --epochs 30
 
 def main():
     torch.set_float32_matmul_precision('high')
@@ -19,8 +17,7 @@ def main():
     parser.add_argument('--epochs', type=int, default=10, help='Number of epochs')
     parser.add_argument('--device', type=str, default='cpu', help='Device to use')
     
-    parser.add_argument('--sigma', default=0.1, type=float, help='Sigma used in the ABCD parameters update factor')
-    parser.add_argument('--abcd_perturbation_std', default=1, type=float, help='Standard deviation of the gaussian noise used to perturbate the parameters')
+    parser.add_argument('--sigma', default=0.1, type=float, help='Sigma used in the ES mutation')
     parser.add_argument('--abcd_learning_rate', default=0.2, type=float, help='Learning rate of the ABCD parameters')
     parser.add_argument('--abcd_lr_decay', default=0.995, type=float, help='Decay factor for abcd_learning_rate')
     parser.add_argument('--aggregation_function', default='max', type=str, help='Aggregation function used in the ABCD update')
@@ -73,7 +70,6 @@ def main():
         'num_threads': args.num_threads,
         'sigma':args.sigma,
         'abcd_learning_rate': args.abcd_learning_rate,
-        'abcd_perturbation_std': args.abcd_perturbation_std,
         'abcd_lr_decay': args.abcd_lr_decay,
         'aggregation_function': args.aggregation_function,
         'architecture': model,
@@ -93,7 +89,6 @@ def main():
                                population_size=args.population_size,
                                num_threads=args.num_threads,
                                sigma=args.sigma,
-                               abcd_perturbation_std=args.abcd_perturbation_std,
                                abcd_learning_rate=args.abcd_learning_rate,
                                abcd_lr_decay=args.abcd_lr_decay,
                                aggregation_function=args.aggregation_function,
